@@ -1,0 +1,500 @@
+/********************************************************************************
+ * Global Theme Overrides for Fokkus IDE (Blue Neon Glassmorphism)
+ ********************************************************************************/
+
+/* Base Colors - Blue Neon Palette */
+html body, html body.vscode-dark, html body.vscode-light, html body.theia-dark, html body.theia-light {
+    --theia-brand-color0: #1e3a8a !important; /* Deep blue */
+    --theia-brand-color1: #3b82f6 !important; /* Blue 500 */
+    --theia-brand-color2: #60a5fa !important; /* Blue 400 */
+    --theia-brand-color3: #93c5fd !important; /* Blue 300 */
+    --theia-brand-color4: #bfdbfe !important; /* Blue 200 */
+    
+    /* UI Backgrounds */
+    --theia-layout-color0: rgba(10, 10, 14, 0.95) !important; /* Deepest background */
+    --theia-layout-color1: rgba(16, 16, 22, 0.85) !important; /* Main panels */
+    --theia-layout-color2: rgba(22, 22, 28, 0.80) !important; /* Secondary panels */
+    --theia-layout-color3: rgba(30, 30, 38, 0.75) !important; /* Hover states */
+    --theia-layout-color4: rgba(38, 38, 48, 0.70) !important;
+    
+    /* VS Code Theme Overrides */
+    --theia-editor-background: transparent !important;
+    --theia-sideBar-background: transparent !important;
+    --theia-activityBar-background: transparent !important;
+    --theia-activityBar-activeBackground: transparent !important;
+    --theia-terminal-background: transparent !important;
+    --theia-panel-background: transparent !important;
+    --theia-titleBar-activeBackground: transparent !important;
+    --theia-titleBar-inactiveBackground: transparent !important;
+    --theia-menu-background: transparent !important;
+    --theia-menubar-selectionBackground: rgba(59, 130, 246, 0.2) !important;
+    --theia-editorGroupHeader-tabsBackground: transparent !important;
+    --theia-tab-inactiveBackground: transparent !important;
+    --theia-tab-activeBackground: rgba(255, 255, 255, 0.05) !important;
+    --theia-focusBorder: transparent !important; /* Neutralize square outlines */
+    --theia-inputOption-activeBorder: transparent !important;
+    --theia-inputValidation-warningBorder: transparent !important;
+    
+    /* Accents */
+    --theia-accent-color1: #3b82f6 !important;
+    --theia-accent-color2: #38bdf8 !important;
+    
+    /* Typography */
+    --theia-ui-font-family: 'Inter', 'Outfit', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+    
+    /* Focus & Selection */
+    --theia-focus-border: rgba(59, 130, 246, 0.6) !important;
+    --theia-selection-background: rgba(59, 130, 246, 0.25) !important;
+    
+    /* Borders */
+    --theia-border-color0: rgba(255, 255, 255, 0.08) !important;
+    --theia-border-color1: rgba(255, 255, 255, 0.05) !important;
+    --theia-border-color2: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Base Body Application */
+html, body {
+    background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.1), transparent 40%),
+                radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.1), transparent 40%),
+                #0a0a0e !important;
+}
+
+/* Theia Main Window */
+html body .theia-app-main {
+    background: transparent !important;
+}
+
+/* General Layout Resets */
+html body .lm-Widget {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+html body, 
+html body #theia-app-shell,
+html body #theia-main-content-panel {
+    background: transparent !important;
+}
+
+/* Lumino Widgets & Dock Panels (Glassmorphism) */
+html body .lm-Widget,
+html body .lm-DockPanel,
+html body .lm-TabBar,
+html body .lm-SplitPanel,
+html body .theia-app-shell {
+    background: transparent !important;
+}
+
+/* Top Panel (Titlebar, Menubar, Toolbar) - Aggressive Override */
+html body #theia-top-panel,
+html body #theia-top-panel > .lm-Widget,
+html body #theia-top-panel > div,
+html body #theia-drag-panel,
+html body #window-controls,
+html body #theia-custom-title,
+html body .theia-ApplicationTitleBar,
+html body .lm-MenuBar,
+html body .p-MenuBar,
+html body .theia-toolbar,
+html body #theia-app-shell > .lm-Widget.theia-app-sides {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+html body .lm-MenuBar-item,
+html body .p-MenuBar-item {
+    transition: background 0.2s ease, color 0.2s ease;
+    border-radius: 4px;
+}
+
+/* Dropdown Menus (Glassmorphism) */
+html body .lm-Menu {
+    background: rgba(16, 16, 22, 0.85) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+html body .lm-Menu-item.lm-mod-active {
+    background: rgba(59, 130, 246, 0.2) !important;
+    color: #fff !important;
+}
+
+html body .lm-MenuBar-item:hover,
+html body .lm-MenuBar-item.lm-mod-active {
+    background: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Floating Rounded Panels (Layout-Safe) */
+html body .lm-DockPanel-widget,
+html body .theia-sidepanel-content,
+html body .theia-panel-container {
+    background: var(--theia-layout-color1) !important;
+    background-clip: padding-box !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 4px solid transparent !important; /* Creates the 4px gap visually without breaking Lumino layout */
+    border-radius: 16px !important;
+    box-shadow: inset 0 0 0 1px var(--theia-border-color1) !important; /* Inner 1px visible border */
+    overflow: hidden;
+}
+
+/* Lumino TabBar (Top tabs) */
+html body .lm-TabBar {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border-bottom: none !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0 4px !important;
+}
+
+html body .lm-TabBar-tab {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 8px 8px 0 0 !important;
+    margin-top: 4px;
+    margin-right: 2px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+html body .lm-TabBar-tab:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+html body .lm-TabBar-tab.lm-mod-current {
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.15), transparent) !important;
+    border-top: 2px solid var(--theia-accent-color1) !important;
+    border-left: 1px solid var(--theia-border-color1) !important;
+    border-right: 1px solid var(--theia-border-color1) !important;
+    box-shadow: 0 -4px 12px -6px rgba(59, 130, 246, 0.5) inset;
+}
+
+/* Activity Bar (Left/Right sidebars) */
+html body .theia-app-sidebar-container {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+html body .theia-app-sidebar-container .lm-TabBar-tab {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+html body .theia-app-sidebar-container .lm-TabBar-tab.lm-mod-current,
+html body .theia-app-sidebar-container .lm-TabBar-tab:hover {
+    background: transparent !important;
+    border: none !important;
+    border-left: 2px solid var(--theia-accent-color1) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+/* Splitters / Resizers */
+html body .lm-Splitter {
+    background: transparent !important;
+    position: relative;
+    border: none !important;
+}
+
+html body .lm-Splitter:after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: transparent !important; /* Invisible by default for seamless look */
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+html body .lm-Splitter:hover:after {
+    background: var(--theia-accent-color1) !important;
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important;
+}
+
+/* Scrollbars */
+html body ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+}
+
+html body ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+html body ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+
+html body ::-webkit-scrollbar-thumb:hover {
+    background: rgba(59, 130, 246, 0.4);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+
+/* Buttons & Inputs */
+html body .theia-button {
+    background: var(--theia-accent-color1) !important;
+    border-radius: 6px !important;
+    border: none !important;
+    color: #fff !important;
+    transition: box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+
+html body .theia-button:hover {
+    box-shadow: 0 4px 12px -4px rgba(59, 130, 246, 0.7) !important;
+    transform: translateY(-1px) !important;
+}
+
+html body input[type="text"],
+html body input[type="search"],
+html body input[type="password"],
+html body input[type="number"],
+html body textarea,
+html body .theia-input {
+    border-radius: 8px !important;
+    background: rgba(10, 10, 14, 0.4) !important;
+    border: 1px solid var(--theia-border-color0) !important;
+    outline: none !important; /* Prevent square focus outlines */
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+html body input:focus,
+html body textarea:focus,
+html body .theia-input:focus {
+    border-color: var(--theia-accent-color1) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+    outline: none !important; /* Prevent square focus outlines */
+}
+
+/********************************************************************************
+ * Native-like Window Controls
+ *
+ * Theia renders frameless window controls as codicons. We replace those glyphs
+ * with real SVGs, selected at runtime from the detected OS / desktop environment.
+ * The `fokkus-os-*` classes are injected on <body> by the orchestrator frontend.
+ ********************************************************************************/
+
+/* Suppress the codicon glyph rendered via :before when native SVGs take over. */
+html body.fokkus-os-mac #window-controls .control-button:before,
+html body.fokkus-os-win #window-controls .control-button:before,
+html body.fokkus-os-kde #window-controls .control-button:before,
+html body.fokkus-os-gnome #window-controls .control-button:before,
+html body.fokkus-os-ubuntu #window-controls .control-button:before {
+    content: none !important;
+    font-family: none !important;
+}
+
+html body.fokkus-os-mac #window-controls .control-button,
+html body.fokkus-os-win #window-controls .control-button,
+html body.fokkus-os-kde #window-controls .control-button,
+html body.fokkus-os-gnome #window-controls .control-button,
+html body.fokkus-os-ubuntu #window-controls .control-button {
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    transition: background-color 0.16s ease, background-image 0.16s ease !important;
+}
+
+/* ------------------------------------------------------------------ macOS -- */
+/* Native traffic-light order is close, minimize, maximize (left to right). */
+html body.fokkus-os-mac #window-controls #close-button {
+    grid-column: 1;
+}
+
+html body.fokkus-os-mac #window-controls #minimize-button {
+    grid-column: 2;
+}
+
+html body.fokkus-os-mac #window-controls #maximize-button,
+html body.fokkus-os-mac #window-controls #restore-button {
+    grid-column: 3;
+}
+
+html body.fokkus-os-mac #window-controls .control-button {
+    background-color: transparent !important;
+    background-size: 12px 12px !important;
+}
+
+html body.fokkus-os-mac #window-controls .control-button:hover {
+    background-color: transparent !important;
+}
+
+html body.fokkus-os-mac #window-controls #close-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23ff5f57'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-mac #window-controls #minimize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23febc2e'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-mac #window-controls #maximize-button,
+html body.fokkus-os-mac #window-controls #restore-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%2328c840'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-mac #window-controls #close-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23ff5f57'/%3E%3Cpath d='M4.2 4.2l3.6 3.6M7.8 4.2l-3.6 3.6' stroke='%236b1513' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-mac #window-controls #minimize-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23febc2e'/%3E%3Cpath d='M3.5 6h5' stroke='%236b4d00' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-mac #window-controls #maximize-button:hover,
+html body.fokkus-os-mac #window-controls #restore-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%2328c840'/%3E%3Cpath d='M6 3.5v5M3.5 6h5' stroke='%231a5c22' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+/* ----------------------------------------------------------------- Windows -- */
+html body.fokkus-os-win #window-controls .control-button {
+    background-size: 10px 10px !important;
+}
+
+html body.fokkus-os-win #window-controls #minimize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M0.5 5h9' stroke='%23f3f3f5' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-win #window-controls #maximize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Crect x='0.5' y='0.5' width='9' height='9' rx='1' stroke='%23f3f3f5' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-win #window-controls #restore-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Crect x='2.5' y='0.5' width='7' height='7' rx='1' stroke='%23f3f3f5' stroke-width='1'/%3E%3Crect x='0.5' y='2.5' width='7' height='7' rx='1' stroke='%23f3f3f5' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-win #window-controls #close-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none'%3E%3Cpath d='M0.5 0.5l9 9M9.5 0.5l-9 9' stroke='%23f3f3f5' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-win #window-controls #minimize-button:hover,
+html body.fokkus-os-win #window-controls #maximize-button:hover,
+html body.fokkus-os-win #window-controls #restore-button:hover {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html body.fokkus-os-win #window-controls #close-button:hover {
+    background-color: #e81123 !important;
+}
+
+/* --------------------------------------------------------------------- KDE -- */
+/* Tema KWin personalizado del cliente: círculos grises lisos, sin ningún
+ * glifo dentro. El círculo se dibuja dentro del propio SVG (viewBox 12x12),
+ * así que siempre sale perfectamente redondo sin depender de que el
+ * contenedor .control-button sea cuadrado (evita el problema de los óvalos). */
+html body.fokkus-os-kde #window-controls .control-button {
+    background-size: 12px 12px !important;
+    background-color: transparent !important;
+    border-radius: 0 !important;
+    width: 12px !important;
+    min-width: 12px !important;
+    padding: 0 !important;
+    margin: 0 1px !important;
+}
+
+/* Theia's default #window-controls grid uses 48px-wide columns (sized for the
+ * full-width codicon glyphs). Our 12px circles keep that column width but
+ * are left-aligned inside it, which reads as "muy separados" between buttons
+ * and a big gap before the right edge of the window. Shrink the columns and
+ * center the circles inside them so they sit close together, flush right. */
+html body.fokkus-os-kde #window-controls {
+    grid-template-columns: repeat(3, 20px) !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    justify-items: center !important;
+    align-items: center !important;
+}
+
+html body.fokkus-os-kde #window-controls #minimize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%236b6e75'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-kde #window-controls #maximize-button,
+html body.fokkus-os-kde #window-controls #restore-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%236b6e75'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-kde #window-controls #close-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%236b6e75'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-kde #window-controls #minimize-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23fef688'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-kde #window-controls #maximize-button:hover,
+html body.fokkus-os-kde #window-controls #restore-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%235dfc7c'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-kde #window-controls #close-button:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23ff5b5b'/%3E%3C/svg%3E");
+}
+
+/* ------------------------------------------------------------------- GNOME -- */
+html body.fokkus-os-gnome #window-controls .control-button {
+    background-size: 11px 11px !important;
+}
+
+html body.fokkus-os-gnome #window-controls #minimize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Cpath d='M1 5.5h9' stroke='%23ffffff' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-gnome #window-controls #maximize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Crect x='0.5' y='0.5' width='10' height='10' rx='2' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-gnome #window-controls #restore-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Crect x='3' y='0.5' width='7.5' height='7.5' rx='2' stroke='%23ffffff' stroke-width='1'/%3E%3Crect x='0.5' y='3' width='7.5' height='7.5' rx='2' stroke='%23ffffff' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-gnome #window-controls #close-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Cpath d='M1 1l9 9M10 1l-9 9' stroke='%23ffffff' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-gnome #window-controls #minimize-button:hover,
+html body.fokkus-os-gnome #window-controls #maximize-button:hover,
+html body.fokkus-os-gnome #window-controls #restore-button:hover {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html body.fokkus-os-gnome #window-controls #close-button:hover {
+    background-color: #e01b24 !important;
+}
+
+/* ------------------------------------------------------------------ Ubuntu -- */
+html body.fokkus-os-ubuntu #window-controls .control-button {
+    background-size: 11px 11px !important;
+}
+
+html body.fokkus-os-ubuntu #window-controls #minimize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Cpath d='M1 5.5h9' stroke='%23fafafa' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-ubuntu #window-controls #maximize-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Crect x='0.5' y='0.5' width='10' height='10' rx='2' stroke='%23fafafa' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-ubuntu #window-controls #restore-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Crect x='3' y='0.5' width='7.5' height='7.5' rx='2' stroke='%23fafafa' stroke-width='1'/%3E%3Crect x='0.5' y='3' width='7.5' height='7.5' rx='2' stroke='%23fafafa' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-ubuntu #window-controls #close-button {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 11 11' fill='none'%3E%3Cpath d='M1 1l9 9M10 1l-9 9' stroke='%23fafafa' stroke-width='1' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+html body.fokkus-os-ubuntu #window-controls #minimize-button:hover,
+html body.fokkus-os-ubuntu #window-controls #maximize-button:hover,
+html body.fokkus-os-ubuntu #window-controls #restore-button:hover {
+    background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html body.fokkus-os-ubuntu #window-controls #close-button:hover {
+    background-color: #e95420 !important;
+}

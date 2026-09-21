@@ -1,0 +1,54 @@
+{
+  "private": true,
+  "name": "fokkus-orchestrator-ext",
+  "version": "1.76.0-next-2026-09-14",
+  "description": "Fokkus IDE Orchestrator - side panel to recruit AI agents",
+  "keywords": [
+    "theia-extension"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eclipse-theia/theia-ide.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eclipse-theia/theia-ide/issues"
+  },
+  "homepage": "https://github.com/eclipse-theia/theia-ide",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.76.0-next.18",
+    "@theia/workspace": "1.76.0-next.18",
+    "@xyflow/react": "^12.11.6",
+    "mermaid": "^12.0.0",
+    "react-markdown": "^9.0.1",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "rimraf": "^2.7.1",
+    "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "clean": "rimraf lib *.tsbuildinfo",
+    "build": "tsc -b",
+    "lint": "eslint --ext js,jsx,ts,tsx src",
+    "lint:fix": "eslint --ext js,jsx,ts,tsx src --fix",
+    "watch": "tsc -w",
+    "update:theia": "ts-node ../../scripts/update-theia-version.ts",
+    "update:next": "ts-node ../../scripts/update-theia-version.ts next"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/fokkus-orchestrator-frontend-module",
+      "backend": "lib/node/fokkus-orchestrator-backend-module"
+    }
+  ],
+  "peerDependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

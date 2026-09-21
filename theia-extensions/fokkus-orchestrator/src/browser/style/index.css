@@ -1,0 +1,1392 @@
+@import '@xyflow/react/dist/style.css';
+
+@import '@xyflow/react/dist/style.css';
+
+.fokkus-orchestrator {
+    padding: 20px 18px 32px;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+    height: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+    background:
+        radial-gradient(120% 120% at 10% 0%, rgba(59, 130, 246, 0.10), transparent 55%),
+        var(--theia-editor-background);
+}
+
+/* Tab bar */
+.fokkus-tabbar {
+    position: relative;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    margin-bottom: 22px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fokkus-tab {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    border-radius: 9px;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    cursor: pointer;
+    transition: color 0.25s ease;
+}
+
+.fokkus-tab:hover {
+    color: var(--theia-foreground);
+}
+
+.fokkus-tab--active {
+    color: #fff;
+}
+
+/* Tab indicator width/position are driven by --fokkus-tab-count and
+   --fokkus-tab-active-index custom properties set inline by the React tab
+   bar, so the same rule works regardless of how many tabs are rendered
+   (3 in the old single-widget layout, 4 in the Settings widget). */
+.fokkus-tab-indicator {
+    position: absolute;
+    z-index: 0;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc((100% - 8px - (var(--fokkus-tab-count, 3) - 1) * 2px) / var(--fokkus-tab-count, 3));
+    border-radius: 9px;
+    background: linear-gradient(135deg, #3b82f6, #38bdf8);
+    box-shadow: 0 6px 18px -8px rgba(59, 130, 246, 0.7);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: translateX(calc(var(--fokkus-tab-active-index, 0) * (100% + 2px)));
+}
+
+.fokkus-orchestrator-header {
+    margin-bottom: 20px;
+}
+
+.fokkus-orchestrator-title {
+    margin: 0 0 4px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    background: linear-gradient(90deg, #93c5fd, #3b82f6 45%, #38bdf8);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.fokkus-orchestrator-subtitle {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.6));
+    max-width: 48ch;
+    line-height: 1.4;
+}
+
+.fokkus-provider-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+}
+
+.fokkus-provider-card {
+    position: relative;
+    border-radius: 14px;
+    padding: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-provider-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--fokkus-accent) 50%, transparent);
+    box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--fokkus-accent) 55%, transparent);
+}
+
+.fokkus-provider-card--active {
+    border-color: color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--fokkus-accent) 35%, transparent) inset,
+        0 12px 34px -14px color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+}
+
+.fokkus-provider-card-glow {
+    position: absolute;
+    inset: -40% -40% auto auto;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle, var(--fokkus-accent) 0%, transparent 70%);
+    opacity: 0;
+    filter: blur(30px);
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+
+.fokkus-provider-card:hover .fokkus-provider-card-glow,
+.fokkus-provider-card--active .fokkus-provider-card-glow {
+    opacity: 0.22;
+}
+
+.fokkus-provider-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.fokkus-provider-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--fokkus-accent);
+    background: color-mix(in srgb, var(--fokkus-accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fokkus-accent) 35%, transparent);
+    transition: transform 0.25s ease, background 0.25s ease;
+}
+
+.fokkus-provider-card:hover .fokkus-provider-icon {
+    transform: scale(1.08) rotate(-4deg);
+}
+
+.fokkus-provider-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.fokkus-provider-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--theia-foreground);
+}
+
+.fokkus-provider-tagline {
+    font-size: 0.72rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    line-height: 1.3;
+}
+
+/* Toggle switch */
+.fokkus-toggle {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+
+.fokkus-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+
+.fokkus-toggle-track {
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    display: flex;
+    align-items: center;
+    padding: 2px;
+    box-sizing: border-box;
+    transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-toggle-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fokkus-toggle input:checked + .fokkus-toggle-track {
+    background: var(--fokkus-accent);
+    border-color: var(--fokkus-accent);
+    box-shadow: 0 0 12px 0 color-mix(in srgb, var(--fokkus-accent) 70%, transparent);
+}
+
+.fokkus-toggle input:checked + .fokkus-toggle-track .fokkus-toggle-thumb {
+    transform: translateX(16px);
+}
+
+.fokkus-toggle input:focus-visible + .fokkus-toggle-track {
+    outline: 2px solid var(--fokkus-accent);
+    outline-offset: 2px;
+}
+
+/* Fields */
+.fokkus-provider-fields {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    z-index: 1;
+}
+
+.fokkus-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fokkus-field-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.5));
+}
+
+.fokkus-field-input {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-field-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.fokkus-field-input:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.fokkus-field-input:focus:not(:disabled) {
+    border-color: var(--fokkus-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--fokkus-accent) 22%, transparent);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-field-input:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Status */
+.fokkus-provider-status {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.45));
+    position: relative;
+    z-index: 1;
+}
+
+.fokkus-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-status-dot--on {
+    background: var(--fokkus-accent);
+    box-shadow: 0 0 8px 0 var(--fokkus-accent);
+}
+
+/* Team Builder — role cards */
+.fokkus-role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+}
+
+.fokkus-role-card {
+    position: relative;
+    border-radius: 14px;
+    padding: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: visible;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-role-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--fokkus-accent) 50%, transparent);
+    box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--fokkus-accent) 55%, transparent);
+}
+
+.fokkus-role-card--assigned {
+    border-color: color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--fokkus-accent) 35%, transparent) inset,
+        0 12px 34px -14px color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+}
+
+.fokkus-role-card-glow {
+    position: absolute;
+    inset: -40% -40% auto auto;
+    width: 60%;
+    height: 60%;
+    border-radius: 14px;
+    background: radial-gradient(circle, var(--fokkus-accent) 0%, transparent 70%);
+    opacity: 0;
+    filter: blur(30px);
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+
+.fokkus-role-card:hover .fokkus-role-card-glow,
+.fokkus-role-card--assigned .fokkus-role-card-glow {
+    opacity: 0.22;
+}
+
+.fokkus-role-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.fokkus-role-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--fokkus-accent);
+    background: color-mix(in srgb, var(--fokkus-accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fokkus-accent) 35%, transparent);
+    transition: transform 0.25s ease, background 0.25s ease;
+}
+
+.fokkus-role-card:hover .fokkus-role-icon {
+    transform: scale(1.08) rotate(-4deg);
+}
+
+.fokkus-role-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.fokkus-role-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: var(--theia-foreground);
+}
+
+.fokkus-role-description {
+    font-size: 0.72rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    line-height: 1.35;
+}
+
+.fokkus-role-slot {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    z-index: 2;
+}
+
+.fokkus-role-rules-btn {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    cursor: pointer;
+    transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-role-rules-btn:hover {
+    color: #fff;
+    background: color-mix(in srgb, var(--fokkus-accent) 20%, transparent);
+    border-color: color-mix(in srgb, var(--fokkus-accent) 50%, transparent);
+    transform: rotate(45deg);
+}
+
+.fokkus-role-rules-btn--configured {
+    color: var(--fokkus-accent);
+    border-color: color-mix(in srgb, var(--fokkus-accent) 45%, transparent);
+}
+
+/* Role rules modal (HU-04 — Base Rules / System Prompt per role) */
+@keyframes fokkus-dropdown-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fokkus-modal-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.fokkus-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 8, 14, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: fokkus-dropdown-in 0.15s ease;
+}
+
+.fokkus-modal-panel {
+    position: relative;
+    width: min(560px, calc(100vw - 48px));
+    max-height: calc(100vh - 96px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(32, 32, 44, 0.96), rgba(20, 20, 28, 0.96));
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.7);
+    animation: fokkus-modal-in 0.2s ease;
+    overflow: hidden;
+}
+
+.fokkus-modal-glow {
+    position: absolute;
+    inset: -30% 20% auto auto;
+    width: 55%;
+    height: 55%;
+    background: radial-gradient(circle, var(--fokkus-accent) 0%, transparent 70%);
+    opacity: 0.18;
+    filter: blur(40px);
+    pointer-events: none;
+}
+
+.fokkus-modal-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    position: relative;
+    z-index: 1;
+}
+
+.fokkus-modal-close {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.5));
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-modal-close:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.fokkus-modal-textarea {
+    position: relative;
+    z-index: 1;
+    resize: vertical;
+    min-height: 160px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    font-family: var(--theia-code-font-family, var(--theia-ui-font-family));
+    color: var(--theia-foreground);
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-modal-textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.fokkus-modal-textarea:focus {
+    border-color: var(--fokkus-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--fokkus-accent) 22%, transparent);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-modal-footer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.fokkus-modal-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-modal-button--ghost {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--theia-foreground);
+}
+
+.fokkus-modal-button--ghost:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.fokkus-modal-button--primary {
+    border: 1px solid transparent;
+    background: linear-gradient(135deg, var(--fokkus-accent), color-mix(in srgb, var(--fokkus-accent) 60%, #fff));
+    color: #10101c;
+    box-shadow: 0 8px 20px -10px color-mix(in srgb, var(--fokkus-accent) 70%, transparent);
+}
+
+.fokkus-modal-button--primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px -10px color-mix(in srgb, var(--fokkus-accent) 85%, transparent);
+}
+
+/* Execution probe (Motor de Ejecución) */
+.fokkus-execution-probe {
+    margin-top: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.fokkus-probe-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(56, 189, 248, 0.85));
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 20px -10px rgba(59, 130, 246, 0.7);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.fokkus-probe-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px -10px rgba(59, 130, 246, 0.85);
+}
+
+.fokkus-probe-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.fokkus-probe-result {
+    font-size: 0.78rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Execution modes */
+.fokkus-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.fokkus-mode-card {
+    position: relative;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-radius: 14px;
+    padding: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    cursor: pointer;
+    font-family: var(--theia-ui-font-family);
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-mode-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--fokkus-accent) 50%, transparent);
+    box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--fokkus-accent) 55%, transparent);
+}
+
+.fokkus-mode-card--active {
+    border-color: color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--fokkus-accent) 35%, transparent) inset,
+        0 12px 34px -14px color-mix(in srgb, var(--fokkus-accent) 65%, transparent);
+}
+
+.fokkus-mode-card-glow {
+    position: absolute;
+    inset: -40% -40% auto auto;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle, var(--fokkus-accent) 0%, transparent 70%);
+    opacity: 0;
+    filter: blur(30px);
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+}
+
+.fokkus-mode-card:hover .fokkus-mode-card-glow,
+.fokkus-mode-card--active .fokkus-mode-card-glow {
+    opacity: 0.22;
+}
+
+.fokkus-mode-check {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 1;
+    font-size: 14px;
+    color: var(--fokkus-accent);
+}
+
+.fokkus-mode-icon {
+    position: relative;
+    z-index: 1;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--fokkus-accent);
+    background: color-mix(in srgb, var(--fokkus-accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fokkus-accent) 35%, transparent);
+    transition: transform 0.25s ease;
+}
+
+.fokkus-mode-card:hover .fokkus-mode-icon {
+    transform: scale(1.08) rotate(-4deg);
+}
+
+.fokkus-mode-name {
+    position: relative;
+    z-index: 1;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--theia-foreground);
+}
+
+.fokkus-mode-description {
+    position: relative;
+    z-index: 1;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+}
+
+/* Diff viewer */
+.fokkus-diff-viewer {
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 20px;
+}
+
+.fokkus-diff-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.78rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.6));
+}
+
+.fokkus-diff-filename {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--theia-code-font-family, monospace);
+    color: var(--theia-foreground);
+}
+
+.fokkus-diff-stats {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+    font-family: var(--theia-code-font-family, monospace);
+    font-weight: 600;
+}
+
+.fokkus-diff-stat--add {
+    color: #3fb950;
+}
+
+.fokkus-diff-stat--remove {
+    color: #f85149;
+}
+
+.fokkus-diff-body {
+    padding: 6px 0;
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.78rem;
+    line-height: 1.65;
+    overflow-x: auto;
+}
+
+.fokkus-diff-line {
+    display: flex;
+    padding: 0 14px;
+}
+
+.fokkus-diff-gutter {
+    flex: 0 0 20px;
+    text-align: center;
+    user-select: none;
+    opacity: 0.8;
+}
+
+.fokkus-diff-content {
+    white-space: pre;
+    flex: 1 1 auto;
+}
+
+.fokkus-diff-line--add {
+    background: rgba(63, 185, 80, 0.14);
+    color: #b4f0bf;
+}
+
+.fokkus-diff-line--add .fokkus-diff-gutter {
+    color: #3fb950;
+}
+
+.fokkus-diff-line--remove {
+    background: rgba(248, 81, 73, 0.14);
+    color: #ffc1bd;
+}
+
+.fokkus-diff-line--remove .fokkus-diff-gutter {
+    color: #f85149;
+}
+
+.fokkus-diff-line--context {
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+}
+
+/* Decision bar */
+.fokkus-decision-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.fokkus-decision-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 12px 22px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.86rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.fokkus-decision-button--approve {
+    color: #fff;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    box-shadow: 0 10px 26px -12px rgba(34, 197, 94, 0.75);
+}
+
+.fokkus-decision-button--approve:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 32px -12px rgba(34, 197, 94, 0.9);
+}
+
+.fokkus-decision-button--reject {
+    color: #fff;
+    background: linear-gradient(135deg, #f87171, #dc2626);
+    box-shadow: 0 10px 26px -12px rgba(220, 38, 38, 0.75);
+}
+
+.fokkus-decision-button--reject:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 32px -12px rgba(220, 38, 38, 0.9);
+}
+
+.fokkus-decision-result {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.fokkus-decision-result--approved {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.35);
+}
+
+.fokkus-decision-result--rejected {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.35);
+}
+
+/* Diff empty / loading states */
+.fokkus-diff-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 14px;
+    font-size: 0.78rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    text-align: center;
+}
+
+.fokkus-diff-empty--error {
+    color: #f87171;
+}
+
+.fokkus-decision-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Prompt input bar */
+.fokkus-prompt-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    margin-bottom: 22px;
+    padding: 10px 10px 10px 16px;
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 12px 34px -18px rgba(59, 130, 246, 0.55);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.fokkus-prompt-bar:focus-within {
+    border-color: rgba(59, 130, 246, 0.55);
+    box-shadow:
+        0 0 0 3px rgba(59, 130, 246, 0.18),
+        0 14px 38px -16px rgba(59, 130, 246, 0.7);
+}
+
+.fokkus-prompt-input {
+    flex: 1 1 auto;
+    resize: none;
+    min-height: 22px;
+    max-height: 200px;
+    padding: 8px 4px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
+.fokkus-prompt-input::placeholder {
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.45));
+}
+
+.fokkus-prompt-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.fokkus-prompt-send {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    cursor: pointer;
+    background: linear-gradient(135deg, #3b82f6, #38bdf8);
+    box-shadow: 0 10px 26px -12px rgba(59, 130, 246, 0.75);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.fokkus-prompt-send:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 32px -12px rgba(59, 130, 246, 0.9);
+}
+
+.fokkus-prompt-send:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Chat Widget Layout */
+.fokkus-chat {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fokkus-chat-messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.fokkus-chat-message {
+    display: flex;
+    flex-direction: column;
+}
+
+.fokkus-chat-message--user {
+    align-items: flex-end;
+}
+
+.fokkus-chat-message--assistant,
+.fokkus-chat-message--error {
+    align-items: flex-start;
+}
+
+.fokkus-chat-bubble {
+    max-width: 85%;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.fokkus-chat-message--user .fokkus-chat-bubble {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(56, 189, 248, 0.2));
+    border-color: rgba(59, 130, 246, 0.3);
+    border-bottom-right-radius: 4px;
+}
+
+.fokkus-chat-message--assistant .fokkus-chat-bubble {
+    background: rgba(255, 255, 255, 0.08);
+    border-bottom-left-radius: 4px;
+}
+
+.fokkus-chat-message--error .fokkus-chat-bubble {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: rgba(248, 113, 113, 0.3);
+    border-bottom-left-radius: 4px;
+    color: #fca5a5;
+}
+
+.fokkus-chat-markdown p {
+    margin: 0 0 10px 0;
+}
+.fokkus-chat-markdown p:last-child {
+    margin: 0;
+}
+.fokkus-chat-markdown code {
+    font-family: var(--theia-code-font-family, monospace);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+}
+.fokkus-chat-markdown pre {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 10px 0;
+}
+.fokkus-chat-markdown pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.fokkus-chat-inputbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 14px 18px 24px;
+    background: var(--theia-editor-background);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fokkus-chat-gear {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.6));
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fokkus-chat-gear:hover {
+    color: var(--fokkus-accent, #3b82f6);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.fokkus-chat-inputbar .fokkus-prompt-input {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 10px 14px;
+    transition: all 0.2s ease;
+}
+.fokkus-chat-inputbar .fokkus-prompt-input:focus {
+    border-color: rgba(59, 130, 246, 0.55);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+/* Swarm Builder (React Flow) — the graph is the only Team Builder surface now,
+   so it takes over the remaining vertical space below the tab bar and header. */
+.fokkus-swarm-builder-container {
+    width: 100%;
+    height: calc(100vh - 180px);
+    min-height: 420px;
+    border-radius: 12px;
+    background: rgba(20, 20, 28, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.fokkus-swarm-add-agent-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(56, 189, 248, 0.85));
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    box-shadow: 0 8px 20px -10px rgba(59, 130, 246, 0.7);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fokkus-swarm-add-agent-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px -10px rgba(59, 130, 246, 0.85);
+}
+
+@keyframes fokkus-swarm-node-in {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.fokkus-swarm-node {
+    background: rgba(30, 30, 42, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    min-width: 200px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    animation: fokkus-swarm-node-in 0.25s ease;
+}
+
+.fokkus-swarm-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+}
+
+.fokkus-swarm-node.selected {
+    border-color: var(--fokkus-accent, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4), 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.fokkus-swarm-node.primary {
+    background: linear-gradient(135deg, rgba(30, 30, 42, 0.9), rgba(59, 130, 246, 0.15));
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+.fokkus-swarm-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px 12px 0 0;
+}
+
+.fokkus-swarm-node-header .fa {
+    color: var(--fokkus-accent, #3b82f6);
+    font-size: 16px;
+}
+
+.fokkus-swarm-node-header .fa-star {
+    color: #fbbf24; /* Yellow for primary */
+}
+
+.fokkus-swarm-node-header .node-label {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.fokkus-swarm-node-header .node-settings-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+
+.fokkus-swarm-node-header .node-settings-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    transform: rotate(45deg);
+}
+
+.fokkus-swarm-node-header .node-settings-btn--configured {
+    color: #37ecba;
+}
+
+.fokkus-swarm-node-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.node-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    flex: 0 0 auto;
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.node-status-dot--on {
+    background: #34d399;
+    box-shadow: 0 0 6px 0 #34d399;
+}
+
+.fokkus-swarm-node-body .node-role .badge {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fokkus-swarm-node-body .node-provider {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fokkus-node-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: rgba(255, 255, 255, 0.06);
+    background-image:
+        linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.55) 50%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.55) 50%, transparent 50%);
+    background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 4px 24px 4px 8px;
+    font-size: 0.78rem;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.fokkus-node-select:hover {
+    border-color: rgba(255, 255, 255, 0.22);
+    background-color: rgba(255, 255, 255, 0.09);
+}
+
+.fokkus-node-select:focus {
+    border-color: var(--fokkus-accent, #3b82f6);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--fokkus-accent, #3b82f6) 30%, transparent);
+}
+
+.fokkus-node-select option {
+    background: #1e1e2a;
+    color: #fff;
+}
+
+.fokkus-node-handle {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    background: var(--fokkus-accent, #3b82f6);
+    border: 2px solid rgba(30, 30, 42, 1);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-node-handle::after {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    right: -8px;
+    bottom: -8px;
+    background: transparent;
+}
+
+.fokkus-node-handle:hover {
+    transform: scale(1.2);
+    background: #60a5fa;
+}

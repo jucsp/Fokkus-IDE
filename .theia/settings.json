@@ -1,0 +1,15 @@
+{
+  "fokkusOrchestrator.providers": {
+    "agy-cli": {
+      "id": "agy-cli",
+      "name": "Antigravity Swarm CLI",
+      "type": "cli",
+      "config": {
+        "cliCommand": "/home/juancarlos/.local/bin/agy -p \"{prompt}\""
+      }
+    }
+  },
+  "fokkusOrchestrator.team": {
+    "senior-dev": "agy-cli"
+  }
+}

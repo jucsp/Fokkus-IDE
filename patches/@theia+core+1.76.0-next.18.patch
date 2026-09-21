@@ -1,0 +1,40 @@
+diff --git a/node_modules/@theia/core/lib/electron-main/electron-main-application.js b/node_modules/@theia/core/lib/electron-main/electron-main-application.js
+index db215d7..3b80e57 100644
+--- a/node_modules/@theia/core/lib/electron-main/electron-main-application.js
++++ b/node_modules/@theia/core/lib/electron-main/electron-main-application.js
+@@ -351,9 +351,13 @@ let ElectronMainApplication = class ElectronMainApplication {
+             ? previousWindowState
+             : this.getDefaultTheiaWindowOptions();
+         const result = {
+-            frame: this.useNativeWindowFrame,
+             ...this.getDefaultOptions(),
+-            ...windowState
++            ...windowState,
++            // windowState (persisted geometry from a previous session) may carry a stale
++            // 'frame' value from before THEIA_ELECTRON_DISABLE_NATIVE_ELEMENTS / a title-bar-style
++            // change. useNativeWindowFrame is always the freshly resolved value (see
++            // getTitleBarStyle), so it must win over anything persisted in windowState.
++            frame: this.useNativeWindowFrame
+         };
+         result.webPreferences = {
+             ...result.webPreferences,
+diff --git a/node_modules/@theia/core/src/electron-main/electron-main-application.ts b/node_modules/@theia/core/src/electron-main/electron-main-application.ts
+index d7167a5..3fa7ba6 100644
+--- a/node_modules/@theia/core/src/electron-main/electron-main-application.ts
++++ b/node_modules/@theia/core/src/electron-main/electron-main-application.ts
+@@ -467,9 +467,13 @@ export class ElectronMainApplication {
+             ? previousWindowState
+             : this.getDefaultTheiaWindowOptions();
+         const result = {
+-            frame: this.useNativeWindowFrame,
+             ...this.getDefaultOptions(),
+-            ...windowState
++            ...windowState,
++            // windowState (persisted geometry from a previous session) may carry a stale
++            // 'frame' value from before THEIA_ELECTRON_DISABLE_NATIVE_ELEMENTS / a title-bar-style
++            // change. useNativeWindowFrame is always the freshly resolved value (see
++            // getTitleBarStyle), so it must win over anything persisted in windowState.
++            frame: this.useNativeWindowFrame
+         };
+ 
+         result.webPreferences = {

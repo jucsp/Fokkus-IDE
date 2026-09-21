@@ -1,0 +1,187 @@
+/* Swarm Builder (React Flow) */
+.fokkus-swarm-builder-container {
+    width: 100%;
+    height: 100%;
+    min-height: 500px;
+    border-radius: 12px;
+    background: rgba(20, 20, 28, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.react-flow__edges {
+    z-index: 100 !important;
+}
+
+.node-label-input {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    outline: none;
+    width: 100%;
+    text-align: left;
+    background-color: transparent !important;
+    color: var(--theia-ui-font-color1) !important;
+    box-shadow: none !important;
+}
+.node-label-input:focus {
+    border-bottom: 1px solid var(--fokkus-accent, #3b82f6);
+}
+
+@keyframes fokkus-swarm-node-in {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.fokkus-swarm-node {
+    background: rgba(30, 30, 42, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    min-width: 200px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    animation: fokkus-swarm-node-in 0.25s ease;
+}
+
+.fokkus-swarm-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+}
+
+.fokkus-swarm-node.selected {
+    border-color: var(--fokkus-accent, #3b82f6);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4), 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.fokkus-swarm-node.primary {
+    background: linear-gradient(135deg, rgba(30, 30, 42, 0.9), rgba(59, 130, 246, 0.15));
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+.fokkus-swarm-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px 12px 0 0;
+}
+
+.fokkus-swarm-node-header .fa {
+    color: var(--fokkus-accent, #3b82f6);
+    font-size: 16px;
+}
+
+.fokkus-swarm-node-header .fa-star {
+    color: #fbbf24; /* Yellow for primary */
+}
+
+.fokkus-swarm-node-header .node-label {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.fokkus-swarm-node-header .node-settings-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+
+.fokkus-swarm-node-header .node-settings-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    transform: rotate(45deg);
+}
+
+.fokkus-swarm-node-header .node-settings-btn--configured {
+    color: #37ecba;
+}
+
+.fokkus-swarm-node-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.node-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    flex: 0 0 auto;
+    transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.node-status-dot--on {
+    background: #34d399;
+    box-shadow: 0 0 6px 0 #34d399;
+}
+
+.fokkus-swarm-node-body .node-role .badge {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fokkus-swarm-node-body .node-provider {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fokkus-node-handle {
+    width: 12px;
+    height: 12px;
+    background: var(--fokkus-accent, #3b82f6);
+    border: 2px solid rgba(30, 30, 42, 1);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.fokkus-node-handle.react-flow__handle-top {
+    top: -12px !important;
+}
+
+.fokkus-node-handle.react-flow__handle-bottom {
+    bottom: -12px !important;
+}
+
+.fokkus-node-handle:hover {
+    transform: scale(1.2);
+    background: #60a5fa;
+}
+
+.react-flow__nodes {
+    z-index: 1 !important;
+}
+
+.react-flow__edges {
+    z-index: 2 !important;
+}

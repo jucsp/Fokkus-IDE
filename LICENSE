@@ -1,0 +1,9 @@
+Copyright (c) 2026 Fokkus IDE. All rights reserved.
+
+This Software is proprietary and confidential. 
+Unauthorized copying of this file, via any medium, is strictly prohibited.
+
+The code in this repository (specifically the fokkus-orchestrator extensions and related modifications) is the intellectual property of its creator and may not be copied, distributed, or modified without express written permission.
+
+--
+Nota: Este proyecto está basado en Eclipse Theia (https://theia-ide.org/), el cual está licenciado bajo la Eclipse Public License 2.0 (EPL-2.0). Los componentes base de Theia conservan su licencia original.

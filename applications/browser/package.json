@@ -16,7 +16,7 @@
   },
   "engines": {
     "yarn": ">=1.7.0 <2",
-    "node": ">=24"
+    "node": ">=22"
   },
   "theia": {
     "frontend": {

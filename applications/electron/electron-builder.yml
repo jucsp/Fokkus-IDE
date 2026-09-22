@@ -58,6 +58,7 @@ linux:
   target:
     - deb
     - AppImage
+    - rpm
   publish:
     provider: generic
     url: "https://download.eclipse.org/theia/ide/latest/linux"

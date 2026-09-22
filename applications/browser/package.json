@@ -3,7 +3,7 @@
   "name": "theia-ide-browser-app",
   "description": "Fokkus IDE browser product",
   "productName": "Fokkus IDE",
-  "version": "1.76.0-next-2026-09-14",
+  "version": "1.0.0",
   "license": "MIT",
   "author": "Eclipse Theia <theia-dev@eclipse.org>",
   "homepage": "https://github.com/eclipse-theia/theia-ide#readme",
@@ -116,11 +116,11 @@
     "@theia/variable-resolver": "1.76.0-next.18",
     "@theia/vsx-registry": "1.76.0-next.18",
     "@theia/workspace": "1.76.0-next.18",
-    "fokkus-orchestrator-ext": "1.76.0-next-2026-09-14",
+    "fokkus-orchestrator-ext": "1.0.0",
     "fs-extra": "^9.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "theia-ide-product-ext": "1.76.0-next-2026-09-14"
+    "theia-ide-product-ext": "1.0.0"
   },
   "devDependencies": {
     "@theia/bundle-plugin": "1.76.0-next.18",

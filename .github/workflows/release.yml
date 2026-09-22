@@ -1,0 +1,44 @@
+name: Release Fokkus IDE
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # Needed for uploading releases
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install RPM for Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install Dependencies
+        run: yarn install
+
+      - name: Download Plugins
+        run: yarn download:plugins
+
+      - name: Build Source
+        run: yarn build
+
+      - name: Package and Publish Release
+        run: yarn package:applications:prod
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

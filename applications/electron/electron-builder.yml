@@ -1,5 +1,5 @@
 appId: eclipse.theia
-productName: TheiaIDE
+productName: Fokkus IDE
 copyright: Copyright © 2020-2026 Eclipse Foundation, Inc
 electronDist: ../../node_modules/electron/dist
 electronVersion: 42.8.1

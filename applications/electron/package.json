@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eclipse-theia/theia-ide.git"
+    "url": "git+https://github.com/jucsp/Fokkus-IDE.git"
   },
   "engines": {
     "yarn": ">=1.7.0 <2",

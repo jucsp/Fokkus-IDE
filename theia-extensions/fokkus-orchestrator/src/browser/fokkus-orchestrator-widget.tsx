@@ -48,6 +48,14 @@ const POSITIONS_PREFERENCE_KEY = 'fokkus-orchestrator.positions';
 /* Shared helpers: dynamic ids, seed data and preference (de)serialization  */
 /* ------------------------------------------------------------------------ */
 
+export function getWorkspacePath(workspaceService: WorkspaceService): string {
+    const roots = workspaceService.tryGetRoots();
+    if (roots.length > 0) {
+        return roots[0].resource.path.toString();
+    }
+    return workspaceService.workspace ? workspaceService.workspace.resource.path.toString() : '';
+}
+
 function slugify(value: string): string {
     const slug = value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     return slug.length > 0 ? slug : 'item';
@@ -730,9 +738,10 @@ function extractDiffFilenames(diff: string): string {
 
 interface WorkspacePanelProps {
     server: FokkusOrchestratorServer;
+    workspacePath: string;
 }
 
-function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
+function WorkspacePanel({ server, workspacePath }: WorkspacePanelProps): React.ReactElement {
     const [activeMode, setActiveMode] = React.useState<string>('manual');
     const [decision, setDecision] = React.useState<'approved' | 'rejected' | undefined>(undefined);
     const [diff, setDiff] = React.useState<string | undefined>(undefined);
@@ -746,7 +755,7 @@ function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
         setLoadingDiff(true);
         setDiffError(undefined);
         try {
-            const result = await server.getWorkspaceDiff();
+            const result = await server.getWorkspaceDiff(workspacePath);
             setDiff(result);
         } catch (error) {
             setDiffError('No se pudo obtener el diff del workspace');
@@ -754,7 +763,7 @@ function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
         } finally {
             setLoadingDiff(false);
         }
-    }, [server]);
+    }, [server, workspacePath]);
 
     React.useEffect(() => {
         refreshDiff();
@@ -764,7 +773,7 @@ function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
         setBusyAction('approve');
         setDecision(undefined);
         try {
-            await server.approveDiff();
+            await server.approveDiff(workspacePath);
             setDecision('approved');
             await refreshDiff();
         } catch (error) {
@@ -773,13 +782,13 @@ function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
         } finally {
             setBusyAction(undefined);
         }
-    }, [server, refreshDiff]);
+    }, [server, refreshDiff, workspacePath]);
 
     const reject = React.useCallback(async () => {
         setBusyAction('reject');
         setDecision(undefined);
         try {
-            await server.rejectDiff();
+            await server.rejectDiff(workspacePath);
             setDecision('rejected');
             await refreshDiff();
         } catch (error) {
@@ -788,7 +797,7 @@ function WorkspacePanel({ server }: WorkspacePanelProps): React.ReactElement {
         } finally {
             setBusyAction(undefined);
         }
-    }, [server, refreshDiff]);
+    }, [server, refreshDiff, workspacePath]);
 
     const runProbe = React.useCallback(async () => {
         setProbeRunning(true);
@@ -945,9 +954,10 @@ const FOKKUS_SETTINGS_TABS: FokkusSettingsTabDefinition[] = [
 interface FokkusSettingsAppProps {
     preferenceService: PreferenceService;
     orchestratorServer: FokkusOrchestratorServer;
+    workspaceService: WorkspaceService;
 }
 
-function FokkusSettingsApp({ preferenceService, orchestratorServer }: FokkusSettingsAppProps): React.ReactElement {
+function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceService }: FokkusSettingsAppProps): React.ReactElement {
     const [activeTab, setActiveTab] = React.useState<FokkusSettingsTabId>('providers');
     const [providersState, setProvidersState] = React.useState<ProvidersState>(() => normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY)));
     const [rolesState, setRolesState] = React.useState<RolesState>(() => normalizeRolesState(preferenceService.get(ROLES_PREFERENCE_KEY)));
@@ -1107,7 +1117,7 @@ function FokkusSettingsApp({ preferenceService, orchestratorServer }: FokkusSett
                     onPositionsChange={handlePositionsChange}
                 />
             )}
-            {activeTab === 'workspace' && <WorkspacePanel server={orchestratorServer} />}
+            {activeTab === 'workspace' && <WorkspacePanel server={orchestratorServer} workspacePath={getWorkspacePath(workspaceService)} />}
         </div>
     );
 }
@@ -1124,6 +1134,9 @@ export class FokkusSettingsWidget extends ReactWidget {
     @inject(FokkusOrchestratorServer)
     protected readonly orchestratorServer: FokkusOrchestratorServer;
 
+    @inject(WorkspaceService)
+    protected readonly workspaceService: WorkspaceService;
+
     @postConstruct()
     protected init(): void {
         this.id = FokkusSettingsWidget.ID;
@@ -1139,6 +1152,7 @@ export class FokkusSettingsWidget extends ReactWidget {
             <FokkusSettingsApp
                 preferenceService={this.preferenceService}
                 orchestratorServer={this.orchestratorServer}
+                workspaceService={this.workspaceService}
             />
         );
     }
@@ -1228,7 +1242,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const compactChatHistory = React.useCallback(async () => {
         setDispatching(true);
         try {
-            const workspacePath = workspaceService.workspace ? workspaceService.workspace.resource.path.toString() : '';
+            const workspacePath = getWorkspacePath(workspaceService);
             
             await preferenceService.ready;
             const providersState = normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY));
@@ -1267,18 +1281,22 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const messagesEndRef = React.useRef<HTMLDivElement | undefined>(undefined);
 
     React.useEffect(() => {
-        // En lugar de depender de workspaceService.workspace que puede no estar listo,
-        // delegamos la resolución del path al backend con un string vacío.
-        orchestratorServer.loadChatHistory('').then(history => {
-            if (history && history.length > 0) {
-                setMessages(history.map(msg => ({
-                    id: nextChatMessageId(),
-                    role: (msg.role === 'user' || msg.role === 'assistant') ? msg.role : 'assistant',
-                    content: msg.content
-                })));
-            }
-        }).catch(e => console.error("[fokkus-orchestrator] Error loading chat history:", e));
-    }, [orchestratorServer]);
+        let disposed = false;
+        workspaceService.ready.then(() => {
+            if (disposed) return;
+            const workspacePath = getWorkspacePath(workspaceService);
+            orchestratorServer.loadChatHistory(workspacePath).then(history => {
+                if (history && history.length > 0) {
+                    setMessages(history.map(msg => ({
+                        id: nextChatMessageId(),
+                        role: (msg.role === 'user' || msg.role === 'assistant') ? msg.role : 'assistant',
+                        content: msg.content
+                    })));
+                }
+            }).catch(e => console.error("[fokkus-orchestrator] Error loading chat history:", e));
+        });
+        return () => { disposed = true; };
+    }, [orchestratorServer, workspaceService]);
 
     React.useEffect(() => {
         let interval: any;
@@ -1399,7 +1417,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         setAttachments([]);
         setDispatching(true);
 
-        const workspacePath = workspaceService.workspace ? workspaceService.workspace.resource.path.toString() : '';
+        const workspacePath = getWorkspacePath(workspaceService);
 
         try {
             const historyToSaveBefore = messagesWithUser.map(m => ({

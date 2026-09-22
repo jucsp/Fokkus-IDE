@@ -84,9 +84,9 @@ export interface DesktopEnvironment {
 
 export interface FokkusOrchestratorServer {
     executeTask(task: string): Promise<string>;
-    getWorkspaceDiff(): Promise<string>;
-    approveDiff(): Promise<void>;
-    rejectDiff(): Promise<void>;
+    getWorkspaceDiff(workspacePath: string): Promise<string>;
+    approveDiff(workspacePath: string): Promise<void>;
+    rejectDiff(workspacePath: string): Promise<void>;
     dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult>;
     addProvider(provider: DynamicProvider): Promise<void>;
     assignRole(roleId: string, providerId: string): Promise<void>;

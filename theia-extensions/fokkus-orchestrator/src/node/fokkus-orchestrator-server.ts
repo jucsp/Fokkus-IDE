@@ -84,18 +84,18 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         return `pong: ${task}`;
     }
 
-    async getWorkspaceDiff(): Promise<string> {
-        const cwd = await this.resolveWorkspaceRoot();
+    async getWorkspaceDiff(workspacePath: string): Promise<string> {
+        const cwd = workspacePath || await this.resolveWorkspaceRoot();
         return this.runStreamingCommand('git diff', cwd);
     }
 
-    async approveDiff(): Promise<void> {
-        const cwd = await this.resolveWorkspaceRoot();
+    async approveDiff(workspacePath: string): Promise<void> {
+        const cwd = workspacePath || await this.resolveWorkspaceRoot();
         await this.runStreamingCommand('git add . && git commit -m "Aprobado vía Fokkus Swarm"', cwd);
     }
 
-    async rejectDiff(): Promise<void> {
-        const cwd = await this.resolveWorkspaceRoot();
+    async rejectDiff(workspacePath: string): Promise<void> {
+        const cwd = workspacePath || await this.resolveWorkspaceRoot();
         await this.runStreamingCommand('git reset --hard && git clean -fd', cwd);
     }
 

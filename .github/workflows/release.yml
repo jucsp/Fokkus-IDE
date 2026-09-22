@@ -49,3 +49,17 @@ jobs:
         run: yarn package:applications:prod
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Artifacts
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            applications/electron/dist/*.exe
+            applications/electron/dist/*.AppImage
+            applications/electron/dist/*.rpm
+            applications/electron/dist/*.deb
+            applications/electron/dist/*.tar.gz
+            applications/electron/dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

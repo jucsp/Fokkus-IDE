@@ -48,4 +48,4 @@ jobs:
       - name: Package and Publish Release
         run: yarn package:applications:prod
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

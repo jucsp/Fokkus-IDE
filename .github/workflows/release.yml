@@ -34,6 +34,7 @@ jobs:
         run: yarn install
 
       - name: Patch Theia CLI for Node 22 ESM
+        shell: bash
         run: node -e "const fs = require('fs'); const file = 'node_modules/@theia/cli/lib/download-plugins.js'; fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('const decompress = require(\"decompress\");', 'const _decompress = require(\"decompress\"); const decompress = _decompress.default || _decompress;'));"
 
       - name: Download Plugins

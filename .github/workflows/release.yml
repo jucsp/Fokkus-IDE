@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-2022]
     
     steps:
       - name: Checkout Code
@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'yarn'
 
       - name: Install System Dependencies for Linux
@@ -31,9 +31,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y rpm libx11-dev libxkbfile-dev libsecret-1-dev pkg-config
 
       - name: Install Dependencies
+        env:
+          NODE_OPTIONS: "--no-experimental-require-module"
         run: yarn install
 
       - name: Download Plugins
+        env:
+          NODE_OPTIONS: "--no-experimental-require-module"
         run: yarn download:plugins
 
       - name: Build Source

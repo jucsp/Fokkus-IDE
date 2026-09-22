@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: write # Needed for uploading releases
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     
@@ -25,9 +26,9 @@ jobs:
           node-version: '24'
           cache: 'yarn'
 
-      - name: Install RPM for Linux
+      - name: Install System Dependencies for Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm libx11-dev libxkbfile-dev libsecret-1-dev pkg-config
 
       - name: Install Dependencies
         run: yarn install

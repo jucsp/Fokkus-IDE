@@ -11,6 +11,12 @@ asarUnpack:
 nodeGypRebuild: false
 npmRebuild: false
 
+publish:
+  provider: github
+  owner: jucsp
+  repo: Fokkus-IDE
+  releaseType: release
+
 directories:
   buildResources: resources
 
@@ -31,10 +37,6 @@ win:
   icon: resources/icons/WindowsLauncherIcons/TheiaIDE.ico
   target:
     - nsis
-  publish:
-    provider: generic
-    url: "https://download.eclipse.org/theia/ide/${version}/windows"
-    useMultipleRangeRequest: false
 mac:
   icon: resources/icons/MacLauncherIcons/icon.icns
   category: public.app-category.developer-tools
@@ -46,9 +48,6 @@ mac:
   target:
     - dmg
     - zip
-  publish:
-    provider: generic
-    url: "https://download.eclipse.org/theia/ide/latest/macos"
 linux:
   icon: resources/icons/LinuxLauncherIcons
   category: Development
@@ -59,9 +58,6 @@ linux:
     - deb
     - AppImage
     - rpm
-  publish:
-    provider: generic
-    url: "https://download.eclipse.org/theia/ide/latest/linux"
 
 nsis:
   menuCategory: true
@@ -74,15 +70,15 @@ nsis:
   uninstallerSidebar: resources/icons/InstallerSidebarImage/164-314Windows.bmp
   allowToChangeInstallationDirectory: true
   runAfterFinish: false
-  artifactName: ${productName}Setup.${ext}
+  artifactName: Fokkus-IDE-Setup.${ext}
   license: LICENSE
 dmg:
-  artifactName: ${productName}.${ext}
+  artifactName: Fokkus-IDE.${ext}
 deb:
-  artifactName: ${productName}.${ext}
+  artifactName: Fokkus-IDE.${ext}
 appImage:
-  artifactName: ${productName}.${ext}
+  artifactName: Fokkus-IDE.${ext}
 rpm:
-  artifactName: ${productName}.${ext}
+  artifactName: Fokkus-IDE.${ext}
 
 afterPack: ./scripts/after-pack.js

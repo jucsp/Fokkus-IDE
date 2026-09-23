@@ -43,10 +43,9 @@ jobs:
       - name: Build Source
         run: yarn build
 
-      - name: Package and Publish Release
-        run: yarn package:applications:prod
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Package only: softprops/action-gh-release is the single uploader (incl. latest*.yml for electron-updater)
+      - name: Package Release
+        run: yarn package:applications
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
@@ -59,5 +58,7 @@ jobs:
             applications/electron/dist/*.deb
             applications/electron/dist/*.tar.gz
             applications/electron/dist/*.zip
+            applications/electron/dist/latest*.yml
+            applications/electron/dist/*.blockmap
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

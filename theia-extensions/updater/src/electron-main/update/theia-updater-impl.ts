@@ -8,11 +8,12 @@
  ********************************************************************************/
 
 import { ElectronMainApplication, ElectronMainApplicationContribution } from '@theia/core/lib/electron-main/electron-main-application';
-import { TheiaUpdater, TheiaUpdaterClient, UpdaterSettings } from '../../common/updater/theia-updater';
+import { TheiaUpdater, TheiaUpdaterClient, UpdateInfo, UpdaterSettings } from '../../common/updater/theia-updater';
 import { injectable } from '@theia/core/shared/inversify';
 import { CancellationToken } from 'builder-util-runtime';
 
-
+const GITHUB_OWNER = 'jucsp';
+const GITHUB_REPO = 'Fokkus-IDE';
 
 const { autoUpdater } = require('electron-updater');
 
@@ -34,9 +35,15 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     private notifyIfNoUpdate: boolean = false;
     private cancellationToken: CancellationToken = new CancellationToken();
     private updateCheckTimer: NodeJS.Timeout | undefined;
+    private lastUpdateInfo?: UpdateInfo;
 
     constructor() {
         autoUpdater.autoDownload = false;
+        autoUpdater.setFeedURL({
+            provider: 'github',
+            owner: GITHUB_OWNER,
+            repo: GITHUB_REPO
+        });
         autoUpdater.on('update-available', (info: { version: string }) => {
             this.notifyIfNoUpdate = false;
             if (this.initialCheck) {
@@ -45,8 +52,8 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
                     this.reportOnFirstRegistration = true;
                 }
             }
-            const updateInfo = { version: info.version };
-            this.clients.forEach(c => c.updateAvailable(true, updateInfo));
+            this.lastUpdateInfo = { version: info.version };
+            this.clients.forEach(c => c.updateAvailable(true, this.lastUpdateInfo));
         });
         autoUpdater.on('update-not-available', () => {
             const notifyIfNoUpdate = this.notifyIfNoUpdate;
@@ -73,12 +80,8 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
 
     checkForUpdates(notifyIfNoUpdate = true): void {
         this.notifyIfNoUpdate = this.notifyIfNoUpdate || notifyIfNoUpdate;
-        autoUpdater.setFeedURL({
-            provider: 'github',
-            owner: 'jucsp',
-            repo: 'Fokkus-IDE'
-        });
-        autoUpdater.checkForUpdates();
+        autoUpdater.allowPrerelease = this.settings.channel !== 'stable';
+        autoUpdater.checkForUpdates().catch((err: unknown) => autoUpdater.logger.error('Update check failed', err));
     }
 
     setUpdaterSettings(settings: UpdaterSettings): void {
@@ -104,7 +107,7 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     downloadUpdate(): void {
         autoUpdater.logger.info('Downloading update');
         this.cancellationToken = new CancellationToken();
-        autoUpdater.downloadUpdate(this.cancellationToken);
+        autoUpdater.downloadUpdate(this.cancellationToken).catch((err: unknown) => autoUpdater.logger.error('Update download failed', err));
     }
 
     onStart(application: ElectronMainApplication): void {
@@ -144,12 +147,10 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             this.clients.push(client);
             if (this.reportOnFirstRegistration) {
                 this.reportOnFirstRegistration = false;
-                this.clients.forEach(c => c.updateAvailable(true));
+                this.clients.forEach(c => c.updateAvailable(true, this.lastUpdateInfo));
             }
         }
     }
-
-
 
     disconnectClient(client: TheiaUpdaterClient): void {
         const index = this.clients.indexOf(client);

@@ -3,7 +3,7 @@
  ********************************************************************************/
 
 /* Base Colors - Blue Neon Palette */
-html body, html body.vscode-dark, html body.vscode-light, html body.theia-dark, html body.theia-light {
+html body, html body.vscode-dark, html body.theia-dark {
     --theia-brand-color0: #1e3a8a !important; /* Deep blue */
     --theia-brand-color1: #3b82f6 !important; /* Blue 500 */
     --theia-brand-color2: #60a5fa !important; /* Blue 400 */
@@ -41,6 +41,19 @@ html body, html body.vscode-dark, html body.vscode-light, html body.theia-dark, 
     
     /* Typography */
     --theia-ui-font-family: 'Inter', 'Outfit', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
+    --theia-foreground: #e6e6ef !important;
+    --theia-ui-font-color0: #e6e6ef !important;
+    --theia-ui-font-color1: #b4b4c6 !important;
+    --theia-ui-font-color2: #b4b4c6 !important;
+    --theia-ui-font-color3: #b4b4c6 !important;
+    --theia-descriptionForeground: rgba(230, 230, 239, 0.7) !important;
+    --theia-sideBar-foreground: #e6e6ef !important;
+    --theia-editor-foreground: #e6e6ef !important;
+    --theia-input-foreground: #e6e6ef !important;
+    --theia-input-placeholderForeground: #8a8aa0 !important;
+    --theia-menu-foreground: #e6e6ef !important;
+    --theia-tab-inactiveForeground: #b4b4c6 !important;
+    --theia-list-inactiveSelectionForeground: #e6e6ef !important;
     
     /* Focus & Selection */
     --theia-focus-border: rgba(59, 130, 246, 0.6) !important;
@@ -497,4 +510,11 @@ html body.fokkus-os-ubuntu #window-controls #restore-button:hover {
 
 html body.fokkus-os-ubuntu #window-controls #close-button:hover {
     background-color: #e95420 !important;
+}
+
+/* Windows Font Legibility Fixes */
+html body.fokkus-os-win {
+    --theia-ui-font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif !important;
+    -webkit-font-smoothing: auto;
+    text-rendering: optimizeLegibility;
 }

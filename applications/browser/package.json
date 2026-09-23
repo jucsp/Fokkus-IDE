@@ -22,6 +22,7 @@
     "frontend": {
       "config": {
         "applicationName": "Fokkus IDE",
+        "defaultTheme": "dark",
         "warnOnPotentiallyInsecureHostPattern": false,
         "preferences": {
           "toolbar.showToolbar": true,

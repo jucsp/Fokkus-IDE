@@ -9,6 +9,8 @@
 
 import { AbstractViewContribution, ApplicationShell, FrontendApplicationContribution, FrontendApplication, CommonCommands, CommonMenus, WidgetManager } from '@theia/core/lib/browser';
 import { CommandRegistry } from '@theia/core/lib/common';
+import { isOSX, isWindows } from '@theia/core/lib/common/os';
+import { ThemeService } from '@theia/core/lib/browser/theming';
 import { MenuContribution, MenuModelRegistry } from '@theia/core/lib/common/menu';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { FokkusOrchestratorServer } from '../common/fokkus-orchestrator-protocol';
@@ -62,6 +64,9 @@ export class FokkusOrchestratorContribution extends AbstractViewContribution<Fok
     @inject(ApplicationShell)
     protected readonly shell: ApplicationShell;
 
+    @inject(ThemeService)
+    protected readonly themeService: ThemeService;
+
     constructor() {
         super({
             widgetId: FokkusChatWidget.ID,
@@ -77,6 +82,16 @@ export class FokkusOrchestratorContribution extends AbstractViewContribution<Fok
     async onStart(app: FrontendApplication): Promise<void> {
         this.openView({ activate: true });
         this.applyDesktopEnvironmentClass();
+
+        // Theme migration: force dark theme for existing users who saved the light theme.
+        const migrated = localStorage.getItem('fokkus.themeMigration.v1');
+        if (!migrated) {
+            const currentTheme = this.themeService.getCurrentTheme().type;
+            if (currentTheme === 'light' || currentTheme === 'hcLight') {
+                this.themeService.setCurrentTheme('dark');
+            }
+            localStorage.setItem('fokkus.themeMigration.v1', 'true');
+        }
     }
 
     async registerCommands(commands: CommandRegistry): Promise<void> {
@@ -96,8 +111,17 @@ export class FokkusOrchestratorContribution extends AbstractViewContribution<Fok
 
     private async applyDesktopEnvironmentClass(): Promise<void> {
         try {
-            const environment = await this.orchestratorServer.getDesktopEnvironment();
-            const className = mapDesktopEnvironmentToClass(environment.platform, environment.desktop);
+            // El SO del cliente manda: conectado por Remote-WSL el backend es Linux pero la
+            // ventana sigue siendo Windows. Al backend solo se le pregunta el escritorio Linux.
+            let className: string;
+            if (isWindows) {
+                className = mapDesktopEnvironmentToClass('win32', '');
+            } else if (isOSX) {
+                className = mapDesktopEnvironmentToClass('darwin', '');
+            } else {
+                const environment = await this.orchestratorServer.getDesktopEnvironment();
+                className = mapDesktopEnvironmentToClass(environment.platform, environment.desktop);
+            }
             document.body.classList.forEach(name => {
                 if (name.startsWith(OS_CLASS_PREFIX)) {
                     document.body.classList.remove(name);

@@ -6,6 +6,7 @@ import { browserOptions, watch } from './gen-esbuild.browser.mjs';
 import { nodeOptions } from './gen-esbuild.node.mjs';
 import { electronOptions } from './gen-esbuild.electron.mjs';
 import esbuild from 'esbuild';
+import { decompressCjsShimPlugin } from '../decompress-cjs-shim-plugin.mjs';
 
 /**
  * Plugin to patch ripgrep path for asar compatibility.
@@ -33,6 +34,13 @@ const asarRipgrepPlugin = {
 
 // Add asar ripgrep plugin before the native dependencies plugin so it takes precedence
 nodeOptions.plugins.unshift(asarRipgrepPlugin);
+
+// Fix `require("decompress")` interop: Theia consumes it from the backend (plugin-ext)
+// and from the Electron main process (remote-wsl). The shared shim exposes the ESM
+// default export as a CJS callable in both bundles.
+nodeOptions.plugins.unshift(decompressCjsShimPlugin);
+electronOptions.plugins = electronOptions.plugins ?? [];
+electronOptions.plugins.unshift(decompressCjsShimPlugin);
 
 const browserContext = await esbuild.context(browserOptions);
 const nodeContext = await esbuild.context(nodeOptions);

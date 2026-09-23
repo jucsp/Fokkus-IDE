@@ -9,6 +9,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import esbuild from 'esbuild';
+import { decompressCjsShimPlugin } from '../decompress-cjs-shim-plugin.mjs';
+
+// Fix `require("decompress")` interop in the backend bundle (plugin-ext / .vsix).
+nodeOptions.plugins.unshift(decompressCjsShimPlugin);
 
 // serve favicon from root and inject link tag into index.html
 browserOptions.plugins.push(

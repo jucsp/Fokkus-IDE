@@ -24,6 +24,7 @@
     "frontend": {
       "config": {
         "applicationName": "Fokkus IDE",
+        "defaultTheme": "dark",
         "reloadOnReconnect": true,
         "preferences": {
           "toolbar.showToolbar": true,

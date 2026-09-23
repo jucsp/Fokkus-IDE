@@ -1278,7 +1278,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
 
     const promptInputRef = React.useRef<HTMLTextAreaElement | undefined>(undefined);
     const fileInputRef = React.useRef<HTMLInputElement | undefined>(undefined);
-    const messagesEndRef = React.useRef<HTMLDivElement | undefined>(undefined);
+    const messagesContainerRef = React.useRef<HTMLDivElement | undefined>(undefined);
 
     React.useEffect(() => {
         let disposed = false;
@@ -1321,18 +1321,44 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
 
     const resizePromptInput = React.useCallback(() => {
         const el = promptInputRef.current;
-        if (el) {
-            el.style.height = 'auto';
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+        if (!el) {
+            return;
         }
+        // Si el widget aún no está adjunto/visible, scrollHeight es 0 y fijar
+        // `height: 0px` corta el placeholder. Se ignora la medición y se reintenta
+        // cuando el panel se muestra o cambia de tamaño.
+        if (el.scrollHeight === 0 || !el.offsetParent) {
+            return;
+        }
+        el.style.height = 'auto';
+        // Con `box-sizing: border-box` (clase theia-input) la altura inline debe
+        // incluir los bordes: scrollHeight mide el contenido (incluye padding) y
+        // `offsetHeight - clientHeight` aporta el alto de los bordes.
+        const borderBoxDelta = el.offsetHeight - el.clientHeight;
+        el.style.height = `${Math.min(el.scrollHeight + borderBoxDelta, 160)}px`;
     }, []);
 
     React.useEffect(() => {
         resizePromptInput();
     }, [promptText, resizePromptInput]);
 
+    // Re-mide el textarea cuando el panel pasa de oculto a visible o cambia de ancho:
+    // un `update()` del widget no re-ejecuta el efecto anterior (depende de promptText).
     React.useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        const container = promptInputRef.current?.parentElement;
+        if (!container || typeof ResizeObserver === 'undefined') {
+            return;
+        }
+        const observer = new ResizeObserver(() => resizePromptInput());
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, [resizePromptInput]);
+
+    React.useEffect(() => {
+        const container = messagesContainerRef.current;
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
     }, [messages]);
 
     const processPasteEvent = React.useCallback((event: ClipboardEvent | React.ClipboardEvent) => {
@@ -1509,7 +1535,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
 
     return (
         <div className='fokkus-chat'>
-            <div className='fokkus-chat-messages'>
+            <div className='fokkus-chat-messages' ref={element => { messagesContainerRef.current = element ?? undefined; }}>
                 {messages.map(message => (
                     <div key={message.id} className={`fokkus-chat-message fokkus-chat-message--${message.role}`}>
                         <div className='fokkus-chat-bubble'>
@@ -1527,7 +1553,6 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                         <span>{loadingText}</span>
                     </div>
                 )}
-                <div ref={element => { messagesEndRef.current = element ?? undefined; }} />
             </div>
 
             <div style={{ padding: '8px', borderTop: '1px solid var(--theia-panel-border)', display: 'flex', alignItems: 'center', gap: '12px' }}>

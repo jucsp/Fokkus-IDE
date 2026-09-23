@@ -396,40 +396,126 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         return { roleId, providerId, providerName, status: 'skipped', output: '', error: reason };
     }
 
+    /**
+     * Devuelve `{ distro, linuxPath }` cuando `cwd` apunta a un filesystem de WSL
+     * accedido desde Windows (\\wsl.localhost\<distro>\... o file://wsl.localhost/<distro>/...).
+     */
+    private parseWslPath(cwd: string): { distro: string; linuxPath: string } | undefined {
+        if (!cwd) {
+            return undefined;
+        }
+        const uriMatch = cwd.match(/^file:\/\/wsl\.localhost\/([^/]+)(\/.*)?$/i);
+        if (uriMatch) {
+            return {
+                distro: decodeURIComponent(uriMatch[1]),
+                linuxPath: uriMatch[2] ? decodeURIComponent(uriMatch[2]) : '/'
+            };
+        }
+        const uncMatch = cwd.match(/^\\\\(wsl\.localhost|wsl\$)\\([^\\]+)(\\.*)?$/i);
+        if (uncMatch) {
+            return {
+                distro: uncMatch[2],
+                linuxPath: uncMatch[3] ? uncMatch[3].replace(/\\/g, '/') : '/'
+            };
+        }
+        return undefined;
+    }
+
+    /**
+     * Añade los flags estándar de `agy` (permisos y --add-dir) a un comando CLI.
+     * `targetDir` debe ser el directorio efectivo de trabajo: la ruta Linux cuando
+     * el workspace está en WSL, o `cwd` en el resto de casos.
+     */
+    private prepareCliCommand(cliCommand: string, targetDir: string): string {
+        let command = cliCommand;
+        if (command.includes('agy')) {
+            if (!command.includes('--dangerously-skip-permissions')) {
+                command = command.replace('agy', 'agy --dangerously-skip-permissions');
+            }
+            if (!command.includes('--add-dir')) {
+                command = command.replace('agy', `agy --add-dir "${targetDir}"`);
+            }
+        }
+        return command;
+    }
+
+    /**
+     * Sustituye el marcador `{prompt}` por `"$FOKKUS_SAFE_PROMPT"` (expansión POSIX).
+     * Si no hay marcador, el prompt se añade como último argumento.
+     */
+    private injectPromptShell(command: string): string {
+        if (command.includes('"{prompt}"')) {
+            return command.replace('"{prompt}"', '"$FOKKUS_SAFE_PROMPT"');
+        }
+        if (command.includes("'{prompt}'")) {
+            return command.replace("'{prompt}'", '"$FOKKUS_SAFE_PROMPT"');
+        }
+        if (command.includes('{prompt}')) {
+            return command.replace('{prompt}', '"$FOKKUS_SAFE_PROMPT"');
+        }
+        return `${command} "$FOKKUS_SAFE_PROMPT"`;
+    }
+
+    private async runCliAgentInWsl(
+        roleId: string,
+        provider: DynamicProvider,
+        command: string,
+        distro: string,
+        linuxPath: string,
+        runEnv: NodeJS.ProcessEnv
+    ): Promise<SwarmAgentResult> {
+        const wslEnv = { ...runEnv };
+        wslEnv.WSLENV = wslEnv.WSLENV
+            ? (wslEnv.WSLENV.includes('FOKKUS_SAFE_PROMPT') ? wslEnv.WSLENV : `${wslEnv.WSLENV}:FOKKUS_SAFE_PROMPT/u`)
+            : 'FOKKUS_SAFE_PROMPT/u';
+        const output = await this.runStreamingProcess(
+            'wsl.exe',
+            ['-d', distro, '--cd', linuxPath, '--', 'bash', '-lc', command],
+            os.homedir(),
+            wslEnv
+        );
+        return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
+    }
+
     private async runCliAgent(roleId: string, provider: DynamicProvider, cliCommand: string, safePrompt: string, cwd: string, env: NodeJS.ProcessEnv): Promise<SwarmAgentResult> {
         try {
             const runEnv = { ...env, FOKKUS_SAFE_PROMPT: safePrompt };
-            let finalCommand = cliCommand;
 
-            if (finalCommand.includes('agy')) {
-                if (!finalCommand.includes('--dangerously-skip-permissions')) {
-                    finalCommand = finalCommand.replace('agy', 'agy --dangerously-skip-permissions');
-                }
-                if (!finalCommand.includes('--add-dir')) {
-                    finalCommand = finalCommand.replace('agy', `agy --add-dir "${cwd}"`);
+            // Escenario WSL sin Remote-WSL: el backend corre en Windows pero el
+            // workspace vive dentro de la distro. El agente debe ejecutarse en Linux
+            // y --add-dir debe recibir la ruta POSIX, no la UNC de Windows.
+            if (process.platform === 'win32') {
+                const wsl = this.parseWslPath(cwd);
+                if (wsl) {
+                    const wslCommand = this.injectPromptShell(this.prepareCliCommand(cliCommand, wsl.linuxPath));
+                    return await this.runCliAgentInWsl(roleId, provider, wslCommand, wsl.distro, wsl.linuxPath, runEnv);
                 }
             }
+
+            const finalCommand = this.prepareCliCommand(cliCommand, cwd);
 
             if (process.platform === 'win32') {
                 // cmd.exe no expande "$VAR" y reinterpreta &, |, <, > y saltos de línea del prompt
                 // (además de limitar la línea a ~8 KB). En Windows se ejecuta el binario sin shell
                 // y el prompt viaja como un argumento más, escapado por Node.
                 const [file, ...args] = this.buildWindowsArgv(finalCommand, safePrompt);
+                if (/\.(cmd|bat)$/i.test(file)) {
+                    return {
+                        roleId,
+                        providerId: provider.id,
+                        providerName: provider.name,
+                        status: 'failed',
+                        output: '',
+                        error: `El comando «${file}» es un script .cmd/.bat. Los agentes en Windows se ejecutan sin cmd.exe: `
+                            + 'usa la ruta al .exe o invócalo con su intérprete (node, python).'
+                    };
+                }
                 const output = await this.runStreamingProcess(file, args, cwd, runEnv);
                 return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
             }
 
-            if (finalCommand.includes('"{prompt}"')) {
-                finalCommand = finalCommand.replace('"{prompt}"', '"$FOKKUS_SAFE_PROMPT"');
-            } else if (finalCommand.includes("'{prompt}'")) {
-                finalCommand = finalCommand.replace("'{prompt}'", '"$FOKKUS_SAFE_PROMPT"');
-            } else if (finalCommand.includes('{prompt}')) {
-                finalCommand = finalCommand.replace('{prompt}', '"$FOKKUS_SAFE_PROMPT"');
-            } else {
-                finalCommand = `${finalCommand} "$FOKKUS_SAFE_PROMPT"`;
-            }
-
-            const output = await this.runStreamingCommand(finalCommand, cwd, runEnv);
+            const command = this.injectPromptShell(finalCommand);
+            const output = await this.runStreamingCommand(command, cwd, runEnv);
             return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
         } catch (error) {
             return {

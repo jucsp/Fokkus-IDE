@@ -17,7 +17,7 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
 - [ ] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
 - [ ] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
-- [ ] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
+- [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
 - [ ] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
 - [ ] #4 Implementar integración con Github (mediante token o OAuth deseable).
 - [ ] #3 En Providers, agregar helper que de ayuda de como integrar proveedores (Gemini, Claude, GPT, DeepSeek).

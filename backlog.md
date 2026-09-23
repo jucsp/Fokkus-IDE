@@ -10,9 +10,9 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #5 Detección de proyecto y contexto: el agente reconoce la carpeta abierta sin necesidad de workspace (`.theia-workspace`) y sigue el protocolo jerárquico de contexto (historial -> backlog -> proyecto).
 
 ## Bugs Reportados
-- [ ] #10 Caja de chat aparece a la mitad cuando se recien se ejecuta el IDE.
-- [ ] #9 No se puede usar WSL en Windows 11.
-- [ ] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
+- [x] #10 Caja de chat aparece a la mitad cuando se recien se ejecuta el IDE.
+- [x] #9 No se puede usar WSL en Windows 11.
+- [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
 - [ ] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.

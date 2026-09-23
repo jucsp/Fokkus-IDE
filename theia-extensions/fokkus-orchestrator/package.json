@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "fokkus-orchestrator-ext",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "Fokkus IDE Orchestrator - side panel to recruit AI agents",
   "keywords": [
     "theia-extension"

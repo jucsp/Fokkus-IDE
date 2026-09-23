@@ -115,7 +115,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
         const tempFiles: string[] = [];
         if (attachments && attachments.length > 0) {
-            const attachDir = '/tmp/fokkus-attachments';
+            const attachDir = join(os.tmpdir(), 'fokkus-attachments');
             await fs.mkdir(attachDir, { recursive: true });
             safePrompt += '\n\n[Archivos adjuntos provistos por el usuario]';
             for (const att of attachments) {
@@ -410,6 +410,15 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
                 }
             }
 
+            if (process.platform === 'win32') {
+                // cmd.exe no expande "$VAR" y reinterpreta &, |, <, > y saltos de línea del prompt
+                // (además de limitar la línea a ~8 KB). En Windows se ejecuta el binario sin shell
+                // y el prompt viaja como un argumento más, escapado por Node.
+                const [file, ...args] = this.buildWindowsArgv(finalCommand, safePrompt);
+                const output = await this.runStreamingProcess(file, args, cwd, runEnv);
+                return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
+            }
+
             if (finalCommand.includes('"{prompt}"')) {
                 finalCommand = finalCommand.replace('"{prompt}"', '"$FOKKUS_SAFE_PROMPT"');
             } else if (finalCommand.includes("'{prompt}'")) {
@@ -554,13 +563,70 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
     }
 
+    /**
+     * Separa un comando CLI en argumentos respetando comillas simples y dobles
+     * (sin escapes con barra invertida, para no romper rutas de Windows), expande
+     * `~` al home del usuario y sustituye `{prompt}`; si no hay marcador, el prompt
+     * se añade como último argumento.
+     */
+    private buildWindowsArgv(command: string, prompt: string): string[] {
+        const tokens: string[] = [];
+        let current = '';
+        let quote: string | undefined;
+        let inToken = false;
+        for (const ch of command) {
+            if (quote) {
+                if (ch === quote) {
+                    quote = undefined;
+                } else {
+                    current += ch;
+                }
+            } else if (ch === '"' || ch === "'") {
+                quote = ch;
+                inToken = true;
+            } else if (/\s/.test(ch)) {
+                if (inToken) {
+                    tokens.push(current);
+                    current = '';
+                    inToken = false;
+                }
+            } else {
+                current += ch;
+                inToken = true;
+            }
+        }
+        if (inToken) {
+            tokens.push(current);
+        }
+
+        let hasPlaceholder = false;
+        const args = tokens.map(token => {
+            if (token === '~' || token.startsWith('~/') || token.startsWith('~\\')) {
+                token = join(os.homedir(), token.slice(1));
+            }
+            if (token.includes('{prompt}')) {
+                hasPlaceholder = true;
+                token = token.split('{prompt}').join(prompt);
+            }
+            return token;
+        });
+        if (!hasPlaceholder) {
+            args.push(prompt);
+        }
+        return args;
+    }
+
     private runStreamingCommand(command: string, cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
+        return this.runStreamingProcess(command, [], cwd, env, true);
+    }
+
+    private runStreamingProcess(file: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, shell = false): Promise<string> {
         return new Promise((resolve, reject) => {
-            const options: any = { cwd, shell: true };
+            const options: any = { cwd, shell };
             if (env) {
                 options.env = env;
             }
-            const child = spawn(command, [], options);
+            const child = spawn(file, args, options);
 
             let stdoutData = '';
             let stderrData = '';
@@ -577,7 +643,12 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
                 this.onAgentLogEmitter.fire(chunk);
             });
 
-            child.on('error', (error: Error) => {
+            child.on('error', (error: NodeJS.ErrnoException) => {
+                if (!shell && error.code === 'ENOENT') {
+                    reject(new Error(`No se encontró el ejecutable «${file}». En Windows los agentes se ejecutan sin cmd.exe: ` +
+                        'si el comando es un script .cmd/.bat (por ejemplo, instalado con npm), usa la ruta al .exe o invócalo con su intérprete (node, python).'));
+                    return;
+                }
                 reject(error);
             });
 

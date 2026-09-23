@@ -82,5 +82,7 @@ deb:
   artifactName: ${productName}.${ext}
 appImage:
   artifactName: ${productName}.${ext}
+rpm:
+  artifactName: ${productName}.${ext}
 
 afterPack: ./scripts/after-pack.js

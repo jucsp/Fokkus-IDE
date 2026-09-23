@@ -10,3 +10,4 @@
 - [x] **[Responsable: Antigravity]** CI/CD Release Automation (Ubuntu/Windows).
 - [x] **[Responsable: Antigravity]** Corrección ESM / Decompress para Theia en Node 22.
 - [x] **[Responsable: Antigravity]** Renombrado de ejecutables a Fokkus IDE.
+- [x] **[Responsable: Antigravity + Claude Code]** #5 Detección de carpeta abierta y contexto jerárquico del agente PO (validado en localhost).

@@ -12,6 +12,7 @@ import { promises as fs } from 'fs';
 import * as os from 'os';
 import { dirname, join } from 'path';
 import { FileUri } from '@theia/core/lib/common/file-uri';
+import URI from '@theia/core/lib/common/uri';
 import { Emitter, Event } from '@theia/core/lib/common/event';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { WorkspaceServer } from '@theia/workspace/lib/common';
@@ -85,22 +86,22 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     async getWorkspaceDiff(workspacePath: string): Promise<string> {
-        const cwd = workspacePath || await this.resolveWorkspaceRoot();
+        const cwd = await this.getEffectiveCwd(workspacePath);
         return this.runStreamingCommand('git diff', cwd);
     }
 
     async approveDiff(workspacePath: string): Promise<void> {
-        const cwd = workspacePath || await this.resolveWorkspaceRoot();
+        const cwd = await this.getEffectiveCwd(workspacePath);
         await this.runStreamingCommand('git add . && git commit -m "Aprobado vía Fokkus Swarm"', cwd);
     }
 
     async rejectDiff(workspacePath: string): Promise<void> {
-        const cwd = workspacePath || await this.resolveWorkspaceRoot();
+        const cwd = await this.getEffectiveCwd(workspacePath);
         await this.runStreamingCommand('git reset --hard && git clean -fd', cwd);
     }
 
     async dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult> {
-        const cwd = workspacePath || await this.resolveWorkspaceRoot();
+        const cwd = await this.getEffectiveCwd(workspacePath);
         await this.ensureProjectDocumentationFiles(cwd);
         
         const chatHistory = await this.loadChatHistory(cwd);
@@ -110,7 +111,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         const persisted = await this.loadTeamConfiguration();
         const effectiveRoles = roles ?? persisted?.roles;
         const effectiveEdges = edges ?? persisted?.edges;
-        let safePrompt = this.buildDispatchPrompt(prompt, mode, team, providers, chatHistory, effectiveRoles, effectiveEdges);
+        let safePrompt = await this.buildDispatchPrompt(prompt, mode, team, providers, chatHistory, cwd, effectiveRoles, effectiveEdges);
 
         const tempFiles: string[] = [];
         if (attachments && attachments.length > 0) {
@@ -279,15 +280,16 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
      * contexto transparente del equipo (quién ocupa cada rol y sus reglas) y la
      * jerarquía definida en el Swarm Builder.
      */
-    private buildDispatchPrompt(
+    private async buildDispatchPrompt(
         prompt: string,
         mode: string,
         team: TeamAssignments,
         providers: ProvidersState,
         chatHistory: ChatMessage[],
+        cwd: string,
         roles?: RolesState,
         edges?: SwarmEdge[]
-    ): string {
+    ): Promise<string> {
         const sections: string[] = [];
 
         const primaryRole = this.findPrimaryRole(team, roles);
@@ -309,6 +311,47 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             const historyText = chatHistory.map(msg => `[${msg.role.toUpperCase()}]: ${msg.content}`).join('\n\n');
             sections.push(`[HISTORIAL DE CONVERSACIÓN RECIENTE]\n${historyText}`);
         }
+
+        // Contexto jerárquico del proyecto: si el backlog está vacío (solo template),
+        // se expone la lista de archivos raíz para que el agente investigue el código.
+        const backlogPath = join(cwd, 'backlog.md');
+        let backlogContent = '';
+        try {
+            backlogContent = await fs.readFile(backlogPath, 'utf8');
+        } catch {
+            backlogContent = '';
+        }
+
+        const backlogIsTemplate = !backlogContent ||
+            backlogContent.trim() === '' ||
+            backlogContent.trim() === '# Product Backlog' ||
+            backlogContent.trim() === '# Product Backlog\n\nAquí puedes documentar las historias de usuario de tu proyecto.';
+
+        if (backlogContent.trim().length > 0 && !backlogIsTemplate) {
+            sections.push(`[BACKLOG DEL PROYECTO]\n${backlogContent.trim()}`);
+        } else {
+            let rootFiles: string[] = [];
+            try {
+                const entries = await fs.readdir(cwd);
+                rootFiles = entries.filter(name => !name.startsWith('.'));
+            } catch {
+                rootFiles = [];
+            }
+            sections.push(
+                `[ARCHIVOS EN LA RAÍZ DEL WORKSPACE]\n` +
+                (rootFiles.length > 0 ? rootFiles.join('\n') : '(no se pudieron listar los archivos de la raíz)')
+            );
+        }
+
+        sections.push(
+            `[PROTOCOLO DE CONTEXTO JERÁRQUICO]\n` +
+            `Directorio del proyecto abierto en el editor: ${cwd}\n` +
+            `Si el historial afirma que no hay proyecto o que el workspace está vacío, verifícalo contra el disco antes de repetirlo: el listado de archivos de este prompt es la fuente de verdad.\n` +
+            `Para resolver la tarea, consulta las fuentes de contexto en este orden estricto:\n` +
+            `1° Historial del Chat (si existe en este prompt).\n` +
+            `2° Backlog del proyecto (o, si está vacío, la lista de archivos de la raíz del workspace).\n` +
+            `3° El Proyecto en sí: lee e investiga el código fuente real del workspace. Si es necesario, delega en los agentes del equipo (sub-agentes) para tareas específicas.`
+        );
 
         sections.push(this.buildAgentPrompt(prompt, mode));
 
@@ -374,10 +417,8 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             } else if (finalCommand.includes('{prompt}')) {
                 finalCommand = finalCommand.replace('{prompt}', '"$FOKKUS_SAFE_PROMPT"');
             } else {
-                finalCommand = `${cliCommand} "$FOKKUS_SAFE_PROMPT"`;
+                finalCommand = `${finalCommand} "$FOKKUS_SAFE_PROMPT"`;
             }
-
-            require('fs').writeFileSync('/tmp/fokkus-last-command.txt', finalCommand, 'utf8');
 
             const output = await this.runStreamingCommand(finalCommand, cwd, runEnv);
             return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
@@ -408,6 +449,21 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         return FileUri.fsPath(workspaceUri);
     }
 
+    /**
+     * Normaliza la ruta del workspace enviada por el frontend a un path de
+     * sistema de archivos válido. Si llega una URI `file://` la convierte con
+     * FileUri; si llega vacía, resuelve el workspace abierto actualmente.
+     */
+    private async getEffectiveCwd(workspacePath: string): Promise<string> {
+        if (!workspacePath || workspacePath.trim().length === 0) {
+            return this.resolveWorkspaceRoot();
+        }
+        if (workspacePath.startsWith('file://')) {
+            return FileUri.fsPath(new URI(workspacePath));
+        }
+        return workspacePath;
+    }
+
     private async resolveWorkspaceSettingsPath(): Promise<string> {
         const root = await this.resolveWorkspaceRoot();
         return join(root, '.theia', 'settings.json');
@@ -418,7 +474,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     private async resolveChatHistoryPath(workspacePath: string): Promise<string> {
-        const cwd = workspacePath || await this.resolveWorkspaceRoot();
+        const cwd = await this.getEffectiveCwd(workspacePath);
         return join(cwd, '.fokkus', 'chat_history.json');
     }
 

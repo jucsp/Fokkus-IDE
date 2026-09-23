@@ -51,9 +51,9 @@ const POSITIONS_PREFERENCE_KEY = 'fokkus-orchestrator.positions';
 export function getWorkspacePath(workspaceService: WorkspaceService): string {
     const roots = workspaceService.tryGetRoots();
     if (roots.length > 0) {
-        return roots[0].resource.path.toString();
+        return roots[0].resource.toString();
     }
-    return workspaceService.workspace ? workspaceService.workspace.resource.path.toString() : '';
+    return workspaceService.workspace ? workspaceService.workspace.resource.toString() : '';
 }
 
 function slugify(value: string): string {

@@ -16,6 +16,7 @@ import { PreferenceScope, PreferenceService } from '@theia/core/lib/common';
 import { CommandService } from '@theia/core/lib/common/command';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
+import { ConfirmDialog } from '@theia/core/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 
 import {
@@ -606,6 +607,26 @@ function TeamBuilderPanel({ providersState, rolesState, assignments, edges, posi
         onRolesChange(nextRoles);
     }, [rolesState, onRolesChange]);
 
+    const deleteRole = React.useCallback(async (roleId: string) => {
+        const target = rolesState[roleId];
+        if (!target) {
+            return;
+        }
+        const confirmed = await new ConfirmDialog({
+            title: 'Eliminar agente',
+            msg: `¿Eliminar el agente «${target.name}»? Se quitarán sus conexiones y su asignación de proveedor.`,
+            ok: 'Eliminar',
+            cancel: 'Cancelar'
+        }).open();
+        if (!confirmed) {
+            return;
+        }
+        const next = { ...rolesState };
+        delete next[roleId];
+        onRolesChange(next);
+        setEditingRoleId(current => (current === roleId ? undefined : current));
+    }, [rolesState, onRolesChange]);
+
     // Creates a new role straight from the graph's "✚ Añadir Agente" button and
     // immediately opens its rules modal, since the canvas is now the only place
     // to build the team (no more grid form to fall back on).
@@ -649,6 +670,7 @@ function TeamBuilderPanel({ providersState, rolesState, assignments, edges, posi
                 onAssignmentChange={assign}
                 onNameChange={handleNameChange}
                 onSetPrimary={handleSetPrimary}
+                onDeleteRole={deleteRole}
                 onAddRole={addRole}
                 onEdgesChange={onEdgesChange}
                 onPositionsChange={onPositionsChange}
@@ -1055,9 +1077,22 @@ function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceSer
         });
     }, []);
 
-    // Cascade cleanup: dropping a role clears its own assignment entry.
+    // Cascade cleanup: dropping a role clears its own assignment entry and its persisted position.
     const handleRolesChange = React.useCallback((next: RolesState) => {
         setRolesState(next);
+        setPositions(prev => {
+            const orphaned = Object.keys(prev).some(roleId => !next[roleId]);
+            if (!orphaned) {
+                return prev;
+            }
+            const cleaned: SwarmNodePositions = {};
+            for (const [roleId, position] of Object.entries(prev)) {
+                if (next[roleId]) {
+                    cleaned[roleId] = position;
+                }
+            }
+            return cleaned;
+        });
         setAssignments(prev => {
             const cleaned: TeamAssignments = {};
             for (const [roleId, providerId] of Object.entries(prev)) {
@@ -1228,6 +1263,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     }]);
     const [promptText, setPromptText] = React.useState('');
     const [dispatching, setDispatching] = React.useState(false);
+    const [stopping, setStopping] = React.useState(false);
     const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
     const [loadingText, setLoadingText] = React.useState('Procesando...');
 
@@ -1251,7 +1287,9 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             
             const prompt = "Por favor genera un resumen en un párrafo de los requerimientos y logros técnicos que hemos alcanzado hasta ahora basándote en la conversación.";
             const result = await orchestratorServer.dispatchToSwarm(workspacePath, prompt, 'manual', assignments, providersState, [], rolesState);
-            
+            if (result.roleResults.some(r => r.status === 'cancelled')) {
+                return;
+            }
             let summary: string | undefined = undefined;
             if (result.roleResults && result.roleResults.length > 0) {
                 const completed = result.roleResults.find(r => r.status === 'completed');
@@ -1273,6 +1311,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             console.error(e);
         } finally {
             setDispatching(false);
+            setStopping(false);
         }
     }, [orchestratorServer, workspaceService, preferenceService]);
 
@@ -1424,6 +1463,18 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         setAttachments(prev => prev.filter((_, i) => i !== index));
     }, []);
 
+    const stopDispatch = React.useCallback(async () => {
+        if (!dispatching || stopping) {
+            return;
+        }
+        setStopping(true);
+        try {
+            await orchestratorServer.cancelDispatch();
+        } catch (error) {
+            console.error('[fokkus-orchestrator] No se pudo detener la ejecución', error);
+        }
+    }, [dispatching, stopping, orchestratorServer]);
+
     const dispatchPrompt = React.useCallback(async () => {
         const trimmed = promptText.trim();
         if ((trimmed.length === 0 && attachments.length === 0) || dispatching) {
@@ -1475,6 +1526,12 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                         role: 'assistant',
                         content: `⚠️ **[${r.providerName}]** omitido: ${cleanAgentOutput(r.error)}`
                     };
+                } else if (r.status === 'cancelled') {
+                    return {
+                        id: nextChatMessageId(),
+                        role: 'assistant',
+                        content: `⏹️ **[${r.providerName}]** detenido por el usuario.`
+                    };
                 } else {
                     return {
                         id: nextChatMessageId(),
@@ -1522,6 +1579,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             await orchestratorServer.saveChatHistory(workspacePath, historyToSave as any);
         } finally {
             setDispatching(false);
+            setStopping(false);
         }
     }, [promptText, dispatching, preferenceService, orchestratorServer]);
 
@@ -1550,7 +1608,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                 {dispatching && (
                     <div style={{ display: 'flex', alignItems: 'center', alignSelf: 'center', margin: '8px 0', padding: '8px 12px', background: 'var(--theia-dropdown-background)', border: '1px solid var(--theia-dropdown-border)', borderRadius: '16px', color: 'var(--theia-descriptionForeground)', fontSize: '0.9em', maxWidth: '80%', gap: '8px' }}>
                         <i className="fa fa-spinner fa-spin" />
-                        <span>{loadingText}</span>
+                        <span>{stopping ? 'Deteniendo...' : loadingText}</span>
                     </div>
                 )}
             </div>
@@ -1619,15 +1677,28 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                         disabled={dispatching}
                     />
                 </div>
-                <button
-                    type='button'
-                    className='fokkus-prompt-send'
-                    onClick={dispatchPrompt}
-                    disabled={dispatching || (promptText.trim().length === 0 && attachments.length === 0)}
-                    title='Enviar al Swarm'
-                >
-                    {dispatching ? <i className='fa fa-spinner fa-spin' /> : <i className='fa fa-paper-plane' />}
-                </button>
+                {dispatching ? (
+                    <button
+                        type='button'
+                        className='fokkus-prompt-send fokkus-prompt-stop'
+                        onClick={stopDispatch}
+                        disabled={stopping}
+                        title='Detener ejecución'
+                        aria-label='Detener ejecución'
+                    >
+                        {stopping ? <i className='fa fa-spinner fa-spin' /> : <i className='fa fa-stop' />}
+                    </button>
+                ) : (
+                    <button
+                        type='button'
+                        className='fokkus-prompt-send'
+                        onClick={dispatchPrompt}
+                        disabled={promptText.trim().length === 0 && attachments.length === 0}
+                        title='Enviar al Swarm'
+                    >
+                        <i className='fa fa-paper-plane' />
+                    </button>
+                )}
             </div>
         </div>
     );

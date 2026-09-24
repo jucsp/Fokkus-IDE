@@ -54,7 +54,7 @@ export interface SwarmAgentResult {
     roleId: string;
     providerId: string;
     providerName: string;
-    status: 'completed' | 'failed' | 'skipped';
+    status: 'completed' | 'failed' | 'skipped' | 'cancelled';
     output: string;
     error?: string;
 }
@@ -88,6 +88,8 @@ export interface FokkusOrchestratorServer {
     approveDiff(workspacePath: string): Promise<void>;
     rejectDiff(workspacePath: string): Promise<void>;
     dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult>;
+    /** Stops the in-flight agent process(es); no-op if none are running. */
+    cancelDispatch(): Promise<void>;
     addProvider(provider: DynamicProvider): Promise<void>;
     assignRole(roleId: string, providerId: string): Promise<void>;
     saveTeamConfiguration(config: TeamConfiguration): Promise<void>;

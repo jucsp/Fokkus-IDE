@@ -22,7 +22,8 @@ import {
     Connection,
     BackgroundVariant,
     NodeTypes,
-    MarkerType
+    MarkerType,
+    OnBeforeDelete
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { DynamicRole, ProvidersState, RolesState, SwarmEdge, TeamAssignments } from '../common/fokkus-orchestrator-protocol';
@@ -91,6 +92,8 @@ export interface SwarmBuilderProps {
     onAssignmentChange: (roleId: string, providerId: string) => void;
     onNameChange?: (roleId: string, newName: string) => void;
     onSetPrimary?: (roleId: string) => void;
+    /** Called when the user asks to delete a role from the graph; the parent confirms and removes it. */
+    onDeleteRole?: (roleId: string) => void;
     /** Triggered by the "✚ Añadir Agente" panel button; creates a role and opens its rules modal. */
     onAddRole: () => void;
     /** Reports the current graph edges upward so the backend can persist the team hierarchy. */
@@ -111,6 +114,7 @@ export function SwarmBuilder({
     onAssignmentChange,
     onNameChange,
     onSetPrimary,
+    onDeleteRole,
     onAddRole,
     onEdgesChange,
     onPositionsChange,
@@ -148,16 +152,26 @@ export function SwarmBuilder({
                     onSettingsClick: () => onOpenRoleSettings(role.id),
                     onAssignmentChange,
                     onNameChange,
-                    onSetPrimary
+                    onSetPrimary,
+                    onDeleteClick: onDeleteRole ? () => onDeleteRole(role.id) : undefined
                 }
             };
         }));
+
+        // Drop edges left dangling by a deleted role. Skipped while roles are still
+        // empty (preferences not hydrated yet) so restored edges are not wiped.
+        if (roles.length > 0) {
+            setEdges(eds => {
+                const pruned = eds.filter(edge => rolesState[edge.source] && rolesState[edge.target]);
+                return pruned.length === eds.length ? eds : pruned;
+            });
+        }
 
         if (!edgesSeededRef.current && roles.length > 0) {
             edgesSeededRef.current = true;
             setEdges(buildHierarchyEdges(roles));
         }
-    }, [rolesState, providersState, assignments, providerOptions, onOpenRoleSettings, onAssignmentChange, onNameChange, onSetPrimary]);
+    }, [rolesState, providersState, assignments, providerOptions, onOpenRoleSettings, onAssignmentChange, onNameChange, onSetPrimary, onDeleteRole]);
 
     const onNodesChange = React.useCallback(
         (changes: NodeChange<SwarmNode>[]) => {
@@ -186,6 +200,18 @@ export function SwarmBuilder({
     const onEdgeDoubleClick = React.useCallback(
         (_event: React.MouseEvent, edge: Edge) => setEdges(eds => eds.filter(x => x.id !== edge.id)),
         []
+    );
+    const handleBeforeDelete = React.useCallback<OnBeforeDelete<SwarmNode, Edge>>(
+        async ({ nodes: toDelete }) => {
+            if (toDelete.length > 0) {
+                if (toDelete.length === 1) {
+                    onDeleteRole?.(toDelete[0].id);
+                }
+                return false;
+            }
+            return true;
+        },
+        [onDeleteRole]
     );
 
     // Inform the parent whenever the graph hierarchy changes so the backend can
@@ -247,6 +273,7 @@ export function SwarmBuilder({
                 onEdgesChange={handleEdgesChange}
                 onConnect={onConnect}
                 onEdgeDoubleClick={onEdgeDoubleClick}
+                onBeforeDelete={handleBeforeDelete}
                 nodeTypes={nodeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.3 }}

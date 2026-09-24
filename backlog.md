@@ -15,8 +15,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
-- [ ] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
-- [ ] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
+- [x] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
+- [x] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
 - [ ] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
 - [ ] #4 Implementar integración con Github (mediante token o OAuth deseable).

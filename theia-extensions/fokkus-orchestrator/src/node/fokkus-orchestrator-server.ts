@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: MIT
  ********************************************************************************/
 
-import { spawn } from 'child_process';
+import { spawn, ChildProcess, SpawnOptionsWithoutStdio } from 'child_process';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import { dirname, join } from 'path';
@@ -67,6 +67,13 @@ const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm
 -->
 `;
 
+class AgentCancelledError extends Error {
+    constructor() {
+        super('Ejecución detenida por el usuario.');
+        this.name = 'AgentCancelledError';
+    }
+}
+
 @injectable()
 export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
@@ -78,6 +85,10 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     protected readonly onAgentLogEmitter = new Emitter<string>();
     readonly onAgentLog: Event<string> = this.onAgentLogEmitter.event;
+
+    protected readonly activeAgentProcesses = new Set<ChildProcess>();
+    protected cancelRequested = false;
+    protected dispatchesInFlight = 0;
 
     async executeTask(task: string): Promise<string> {
         // Fase 4 (infraestructura base): responde con un pong de verificación.
@@ -101,6 +112,26 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     async dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult> {
+        this.cancelRequested = false;
+        this.dispatchesInFlight++;
+        try {
+            return await this.doDispatchToSwarm(workspacePath, prompt, mode, team, providers, attachments, roles, edges);
+        } finally {
+            this.dispatchesInFlight--;
+            this.cancelRequested = false;
+        }
+    }
+
+    private async doDispatchToSwarm(
+        workspacePath: string,
+        prompt: string,
+        mode: string,
+        team: TeamAssignments,
+        providers: ProvidersState,
+        attachments?: ChatAttachment[],
+        roles?: RolesState,
+        edges?: SwarmEdge[]
+    ): Promise<SwarmDispatchResult> {
         const cwd = await this.getEffectiveCwd(workspacePath);
         await this.ensureProjectDocumentationFiles(cwd);
         
@@ -163,6 +194,15 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
                     ? `El Product Owner «${poProvider.name}» es de tipo API; el orquestador principal debe ser de tipo CLI en esta arquitectura.`
                     : `El Product Owner «${poProvider.name}» no tiene un comando CLI configurado.`;
                 roleResults.push(this.skippedAgentResult(poRoleId, poProvider.id, poProvider.name, reason));
+            } else if (this.cancelRequested) {
+                roleResults.push({
+                    roleId: poRoleId,
+                    providerId: poProvider.id,
+                    providerName: poProvider.name,
+                    status: 'cancelled',
+                    output: '',
+                    error: 'Ejecución detenida por el usuario.'
+                });
             } else {
                 const result = await this.runCliAgent(poRoleId, poProvider, poProvider.config.cliCommand.trim(), safePrompt, cwd, teamEnvs);
                 roleResults.push(result);
@@ -472,7 +512,9 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             'wsl.exe',
             ['-d', distro, '--cd', linuxPath, '--', 'bash', '-lc', command],
             os.homedir(),
-            wslEnv
+            wslEnv,
+            false,
+            true
         );
         return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
     }
@@ -510,14 +552,24 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
                             + 'usa la ruta al .exe o invócalo con su intérprete (node, python).'
                     };
                 }
-                const output = await this.runStreamingProcess(file, args, cwd, runEnv);
+                const output = await this.runStreamingProcess(file, args, cwd, runEnv, false, true);
                 return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
             }
 
             const command = this.injectPromptShell(finalCommand);
-            const output = await this.runStreamingCommand(command, cwd, runEnv);
+            const output = await this.runStreamingCommand(command, cwd, runEnv, true);
             return { roleId, providerId: provider.id, providerName: provider.name, status: 'completed', output };
         } catch (error) {
+            if (error instanceof AgentCancelledError) {
+                return {
+                    roleId,
+                    providerId: provider.id,
+                    providerName: provider.name,
+                    status: 'cancelled',
+                    output: '',
+                    error: error.message
+                };
+            }
             return {
                 roleId,
                 providerId: provider.id,
@@ -702,17 +754,69 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         return args;
     }
 
-    private runStreamingCommand(command: string, cwd: string, env?: NodeJS.ProcessEnv): Promise<string> {
-        return this.runStreamingProcess(command, [], cwd, env, true);
+    async cancelDispatch(): Promise<void> {
+        // Also honoured while the prompt is still being prepared (no process spawned yet).
+        if (this.dispatchesInFlight === 0) {
+            return;
+        }
+        this.cancelRequested = true;
+        for (const child of this.activeAgentProcesses) {
+            this.killProcessTree(child);
+        }
     }
 
-    private runStreamingProcess(file: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, shell = false): Promise<string> {
+    private killProcessTree(child: ChildProcess): void {
+        const pid = child.pid;
+        if (!pid) {
+            return;
+        }
+        if (process.platform === 'win32') {
+            const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
+            killer.on('error', () => { /* ignore */ });
+            return;
+        }
+        try {
+            process.kill(-pid, 'SIGTERM');
+        } catch {
+            try {
+                child.kill('SIGTERM');
+            } catch {
+                // El proceso ya terminó.
+            }
+        }
+        const timer = setTimeout(() => {
+            if (this.activeAgentProcesses.has(child)) {
+                try {
+                    process.kill(-pid, 'SIGKILL');
+                } catch {
+                    try {
+                        child.kill('SIGKILL');
+                    } catch {
+                        // El proceso ya terminó.
+                    }
+                }
+            }
+        }, 3000);
+        timer.unref();
+    }
+
+    private runStreamingCommand(command: string, cwd: string, env?: NodeJS.ProcessEnv, trackAsAgent = false): Promise<string> {
+        return this.runStreamingProcess(command, [], cwd, env, true, trackAsAgent);
+    }
+
+    private runStreamingProcess(file: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv, shell = false, trackAsAgent = false): Promise<string> {
         return new Promise((resolve, reject) => {
-            const options: any = { cwd, shell };
+            const options: SpawnOptionsWithoutStdio = { cwd, shell };
             if (env) {
                 options.env = env;
             }
+            if (trackAsAgent && process.platform !== 'win32') {
+                options.detached = true;
+            }
             const child = spawn(file, args, options);
+            if (trackAsAgent) {
+                this.activeAgentProcesses.add(child);
+            }
 
             let stdoutData = '';
             let stderrData = '';
@@ -730,6 +834,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             });
 
             child.on('error', (error: NodeJS.ErrnoException) => {
+                this.activeAgentProcesses.delete(child);
                 if (!shell && error.code === 'ENOENT') {
                     reject(new Error(`No se encontró el ejecutable «${file}». En Windows los agentes se ejecutan sin cmd.exe: ` +
                         'si el comando es un script .cmd/.bat (por ejemplo, instalado con npm), usa la ruta al .exe o invócalo con su intérprete (node, python).'));
@@ -739,14 +844,20 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             });
 
             child.on('close', (code: number) => {
+                this.activeAgentProcesses.delete(child);
                 const outStr = stdoutData.trim();
                 const errStr = stderrData.trim();
-                
+
+                if (trackAsAgent && this.cancelRequested) {
+                    reject(new AgentCancelledError());
+                    return;
+                }
+
                 if (code !== 0) {
                     reject(new Error(errStr || outStr || `Process exited with code ${code}`));
                     return;
                 }
-                
+
                 const combined = [outStr, errStr].filter(s => s.length > 0).join('\n\n--- Logs/Errores ---\n');
                 resolve(combined || '(El agente no devolvió ninguna salida de texto)');
             });

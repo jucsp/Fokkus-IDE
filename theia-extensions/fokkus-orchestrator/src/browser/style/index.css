@@ -1025,6 +1025,15 @@
     transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
+.fokkus-prompt-stop {
+    background: #dc2626;
+    color: #fff;
+}
+
+.fokkus-prompt-stop:hover:not(:disabled) {
+    background: #b91c1c;
+}
+
 .fokkus-prompt-send:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 14px 32px -12px rgba(59, 130, 246, 0.9);

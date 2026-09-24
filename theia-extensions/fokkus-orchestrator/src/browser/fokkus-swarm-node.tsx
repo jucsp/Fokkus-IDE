@@ -27,6 +27,7 @@ export interface SwarmNodeData extends Record<string, unknown> {
     onAssignmentChange?: (roleId: string, providerId: string) => void;
     onNameChange?: (roleId: string, newName: string) => void;
     onSetPrimary?: (roleId: string) => void;
+    onDeleteClick?: () => void;
 }
 
 export type SwarmNode = Node<SwarmNodeData, 'fokkusSwarmNode'>;
@@ -59,6 +60,17 @@ export function FokkusSwarmNode({ data, selected }: NodeProps<SwarmNode>): React
                         title="Configurar Reglas Base (System Prompt)"
                     >
                         <i className="fa fa-cog" />
+                    </button>
+                )}
+                {data.onDeleteClick && (
+                    <button
+                        type='button'
+                        className='node-delete-btn nodrag'
+                        onClick={data.onDeleteClick}
+                        title='Eliminar agente'
+                        aria-label='Eliminar agente'
+                    >
+                        <i className='fa fa-trash' />
                     </button>
                 )}
             </div>

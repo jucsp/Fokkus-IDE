@@ -117,6 +117,21 @@
     color: #37ecba;
 }
 
+.fokkus-swarm-node-header .node-delete-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+
+.fokkus-swarm-node-header .node-delete-btn:hover {
+    color: #f87171;
+}
+
 .fokkus-swarm-node-body {
     padding: 14px;
     display: flex;

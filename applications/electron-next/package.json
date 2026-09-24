@@ -3,7 +3,7 @@
   "name": "theia-ide-next-electron-app",
   "description": "Fokkus IDE Next product",
   "productName": "Fokkus IDE Next",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "main": "scripts/theia-electron-main.js",
   "license": "MIT",
   "author": "Eclipse Theia <theia-dev@eclipse.org>",
@@ -131,13 +131,13 @@
     "@theia/variable-resolver": "1.76.0-next.18",
     "@theia/vsx-registry": "1.76.0-next.18",
     "@theia/workspace": "1.76.0-next.18",
-    "fokkus-orchestrator-ext": "^1.0.4",
+    "fokkus-orchestrator-ext": "^1.0.5",
     "fs-extra": "^9.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "theia-ide-launcher-ext": "1.0.2",
     "theia-ide-product-ext": "1.0.2",
-    "theia-ide-updater-ext": "^1.0.4"
+    "theia-ide-updater-ext": "^1.0.5"
   },
   "devDependencies": {
     "@theia/bundle-plugin": "1.76.0-next.18",

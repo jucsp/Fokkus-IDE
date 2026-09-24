@@ -3,7 +3,7 @@
   "name": "theia-ide-electron-app",
   "description": "Fokkus IDE product",
   "productName": "Fokkus IDE",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "scripts/theia-electron-main.js",
   "license": "MIT",
   "author": "Eclipse Theia <theia-dev@eclipse.org>",
@@ -132,7 +132,7 @@
     "react-dom": "^19.2.8",
     "theia-ide-launcher-ext": "1.0.2",
     "theia-ide-product-ext": "1.0.2",
-    "theia-ide-updater-ext": "^1.0.5"
+    "theia-ide-updater-ext": "^1.0.6"
   },
   "devDependencies": {
     "@theia/bundle-plugin": "1.76.0-next.18",

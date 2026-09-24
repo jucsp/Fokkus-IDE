@@ -10,6 +10,10 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #5 Detección de proyecto y contexto: el agente reconoce la carpeta abierta sin necesidad de workspace (`.theia-workspace`) y sigue el protocolo jerárquico de contexto (historial -> backlog -> proyecto).
 
 ## Bugs Reportados
+- [x] #14 Error de instalación Auto-Updater (RPM): Falla elevación de privilegios con `pkexec must be setuid root`.
+  - _Fix v1.0.6:_ la app hereda `NoNewPrivs=1` del lanzador y eso anula el setuid de pkexec/sudo. Si se detecta, la instalación de `.rpm`/`.deb` se hace con PackageKit (`pkcon install-local`, sin setuid). Si falla, se muestra el comando manual.
+- [x] #13 El Auto-Updater no comprueba actualizaciones automáticamente en segundo plano ni al iniciar (solo funciona manual desde Help > Check for Updates).
+  - _Fix v1.0.6:_ la primera sincronización de preferencias siempre programa el chequeo inicial y el intervalo. Los errores de los chequeos en segundo plano solo se registran en el log.
 - [x] #10 Caja de chat aparece a la mitad cuando se recien se ejecuta el IDE.
 - [x] #9 No se puede usar WSL en Windows 11.
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).

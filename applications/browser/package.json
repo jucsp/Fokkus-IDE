@@ -3,7 +3,7 @@
   "name": "theia-ide-browser-app",
   "description": "Fokkus IDE browser product",
   "productName": "Fokkus IDE",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "license": "MIT",
   "author": "Eclipse Theia <theia-dev@eclipse.org>",
   "homepage": "https://github.com/eclipse-theia/theia-ide#readme",

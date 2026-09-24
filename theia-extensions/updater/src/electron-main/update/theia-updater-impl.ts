@@ -8,9 +8,12 @@
  ********************************************************************************/
 
 import { ElectronMainApplication, ElectronMainApplicationContribution } from '@theia/core/lib/electron-main/electron-main-application';
+import { app } from '@theia/core/electron-shared/electron';
 import { TheiaUpdater, TheiaUpdaterClient, UpdateInfo, UpdaterSettings } from '../../common/updater/theia-updater';
 import { injectable } from '@theia/core/shared/inversify';
 import { CancellationToken } from 'builder-util-runtime';
+import * as fs from 'fs';
+import { execFile } from 'child_process';
 
 const GITHUB_OWNER = 'jucsp';
 const GITHUB_REPO = 'Fokkus-IDE';
@@ -19,6 +22,18 @@ const { autoUpdater } = require('electron-updater');
 
 autoUpdater.logger = require('electron-log');
 autoUpdater.logger.transports.file.level = 'info';
+
+function hasNoNewPrivs(): boolean {
+    if (process.platform !== 'linux') {
+        return false;
+    }
+    try {
+        const status = fs.readFileSync('/proc/self/status', 'utf8');
+        return /^NoNewPrivs:\s*1\s*$/m.test(status);
+    } catch {
+        return false;
+    }
+}
 
 @injectable()
 export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationContribution {
@@ -36,6 +51,11 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     private cancellationToken: CancellationToken = new CancellationToken();
     private updateCheckTimer: NodeJS.Timeout | undefined;
     private lastUpdateInfo?: UpdateInfo;
+    private settingsReceived = false;
+    private backgroundCheck = false;
+    private readonly setuidBlocked = hasNoNewPrivs();
+    private downloadedFile?: string;
+    private updateDownloaded = false;
 
     constructor() {
         autoUpdater.autoDownload = false;
@@ -44,7 +64,12 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO
         });
+        if (this.setuidBlocked) {
+            autoUpdater.autoInstallOnAppQuit = false;
+            autoUpdater.logger.info('NoNewPrivs detected; PackageKit will be used to install updates');
+        }
         autoUpdater.on('update-available', (info: { version: string }) => {
+            this.backgroundCheck = false;
             this.notifyIfNoUpdate = false;
             if (this.initialCheck) {
                 this.initialCheck = false;
@@ -56,6 +81,7 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             this.clients.forEach(c => c.updateAvailable(true, this.lastUpdateInfo));
         });
         autoUpdater.on('update-not-available', () => {
+            this.backgroundCheck = false;
             const notifyIfNoUpdate = this.notifyIfNoUpdate;
             this.notifyIfNoUpdate = false;
             if (this.initialCheck) {
@@ -64,13 +90,21 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             this.clients.forEach(c => c.updateAvailable(false, undefined, notifyIfNoUpdate));
         });
 
-        autoUpdater.on('update-downloaded', () => {
+        autoUpdater.on('update-downloaded', (event: { downloadedFile?: string }) => {
+            this.downloadedFile = event.downloadedFile;
+            this.updateDownloaded = true;
             this.clients.forEach(c => c.notifyReadyToInstall());
         });
 
         autoUpdater.on('error', (err: unknown) => {
             this.notifyIfNoUpdate = false;
+            const wasBackground = this.backgroundCheck;
+            this.backgroundCheck = false;
             if (err instanceof Error && err.message.includes('cancelled')) {
+                return;
+            }
+            if (wasBackground) {
+                autoUpdater.logger.warn('Background update check failed', err);
                 return;
             }
             const errorLogPath = autoUpdater.logger.transports.file.getFile().path;
@@ -80,6 +114,7 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
 
     checkForUpdates(notifyIfNoUpdate = true): void {
         this.notifyIfNoUpdate = this.notifyIfNoUpdate || notifyIfNoUpdate;
+        this.backgroundCheck = false;
         autoUpdater.allowPrerelease = this.settings.channel !== 'stable';
         autoUpdater.checkForUpdates().catch((err: unknown) => autoUpdater.logger.error('Update check failed', err));
     }
@@ -88,14 +123,20 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
         const settingsChanged = this.settings.checkForUpdates !== settings.checkForUpdates ||
             this.settings.checkInterval !== settings.checkInterval ||
             this.settings.channel !== settings.channel;
+        const firstSettings = !this.settingsReceived;
+        this.settingsReceived = true;
         this.settings = settings;
-        if (settingsChanged) {
+        if (firstSettings || settingsChanged) {
             this.scheduleUpdateChecks();
         }
     }
 
     onRestartToUpdateRequested(): void {
-        autoUpdater.quitAndInstall();
+        if (this.setuidBlocked && this.downloadedFile && /\.(rpm|deb)$/.test(this.downloadedFile)) {
+            this.installWithPackageKit(this.downloadedFile);
+        } else {
+            autoUpdater.quitAndInstall();
+        }
     }
 
     cancel(): void {
@@ -124,15 +165,46 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             return;
         }
 
-        this.checkForUpdates(false);
+        this.runBackgroundCheck();
 
         const intervalMs = Math.max(this.settings.checkInterval, 1) * 60 * 1000;
 
         this.updateCheckTimer = setInterval(() => {
             if (this.settings.checkForUpdates) {
-                this.checkForUpdates(false);
+                this.runBackgroundCheck();
             }
         }, intervalMs);
+    }
+
+    private runBackgroundCheck(): void {
+        if (this.updateDownloaded) {
+            return;
+        }
+        this.backgroundCheck = true;
+        autoUpdater.allowPrerelease = this.settings.channel !== 'stable';
+        autoUpdater.checkForUpdates().catch((err: unknown) => autoUpdater.logger.error('Background update check failed', err));
+    }
+
+    private installWithPackageKit(file: string): void {
+        const command = 'pkcon';
+        const args = ['install-local', '--noninteractive', '--allow-untrusted', file];
+        autoUpdater.logger.info(`Installing update with PackageKit: ${command} ${args.join(' ')}`);
+        execFile(command, args, { timeout: 10 * 60 * 1000 }, err => {
+            if (!err) {
+                app.relaunch();
+                app.quit();
+                return;
+            }
+            const manualCommand = file.endsWith('.rpm')
+                ? `sudo dnf install "${file}"`
+                : `sudo apt install "${file}"`;
+            autoUpdater.logger.error('PackageKit installation failed', err);
+            const errorLogPath = autoUpdater.logger.transports.file.getFile().path;
+            this.clients.forEach(c => c.reportError({
+                message: `Unable to install the update automatically. Please run: ${manualCommand}`,
+                errorLogPath
+            }));
+        });
     }
 
     private stopUpdateCheckTimer(): void {

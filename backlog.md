@@ -12,6 +12,7 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 ## Bugs Reportados
 - [x] #14 Error de instalación Auto-Updater (RPM): Falla elevación de privilegios con `pkexec must be setuid root`.
   - _Fix v1.0.6:_ la app hereda `NoNewPrivs=1` del lanzador y eso anula el setuid de pkexec/sudo. Si se detecta, la instalación de `.rpm`/`.deb` se hace con PackageKit (`pkcon install-local`, sin setuid). Si falla, se muestra el comando manual.
+  - _Fix v1.0.8 (regresión):_ la detección de `NoNewPrivs` no cubría todos los casos (en el cliente no se activó y electron-updater volvió a usar pkexec). Ahora en Linux los `.rpm`/`.deb` se instalan siempre con PackageKit (`pkcon install-local`); solo si `pkcon` no existe se usa el instalador de electron-updater. La instalación automática al cerrar la app queda desactivada en Linux.
 - [x] #13 El Auto-Updater no comprueba actualizaciones automáticamente en segundo plano ni al iniciar (solo funciona manual desde Help > Check for Updates).
   - _Fix v1.0.6:_ la primera sincronización de preferencias siempre programa el chequeo inicial y el intervalo. Los errores de los chequeos en segundo plano solo se registran en el log.
 - [x] #10 Caja de chat aparece a la mitad cuando se recien se ejecuta el IDE.

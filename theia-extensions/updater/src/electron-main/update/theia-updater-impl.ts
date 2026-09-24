@@ -12,7 +12,6 @@ import { app } from '@theia/core/electron-shared/electron';
 import { TheiaUpdater, TheiaUpdaterClient, UpdateInfo, UpdaterSettings } from '../../common/updater/theia-updater';
 import { injectable } from '@theia/core/shared/inversify';
 import { CancellationToken } from 'builder-util-runtime';
-import * as fs from 'fs';
 import { execFile } from 'child_process';
 
 const GITHUB_OWNER = 'jucsp';
@@ -22,18 +21,6 @@ const { autoUpdater } = require('electron-updater');
 
 autoUpdater.logger = require('electron-log');
 autoUpdater.logger.transports.file.level = 'info';
-
-function hasNoNewPrivs(): boolean {
-    if (process.platform !== 'linux') {
-        return false;
-    }
-    try {
-        const status = fs.readFileSync('/proc/self/status', 'utf8');
-        return /^NoNewPrivs:\s*1\s*$/m.test(status);
-    } catch {
-        return false;
-    }
-}
 
 @injectable()
 export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationContribution {
@@ -53,7 +40,7 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     private lastUpdateInfo?: UpdateInfo;
     private settingsReceived = false;
     private backgroundCheck = false;
-    private readonly setuidBlocked = hasNoNewPrivs();
+    private pkconInstallRunning = false;
     private downloadedFile?: string;
     private updateDownloaded = false;
 
@@ -64,9 +51,9 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
             owner: GITHUB_OWNER,
             repo: GITHUB_REPO
         });
-        if (this.setuidBlocked) {
+        if (process.platform === 'linux') {
             autoUpdater.autoInstallOnAppQuit = false;
-            autoUpdater.logger.info('NoNewPrivs detected; PackageKit will be used to install updates');
+            autoUpdater.logger.info('PackageKit will be used to install Linux updates');
         }
         autoUpdater.on('update-available', (info: { version: string }) => {
             this.backgroundCheck = false;
@@ -132,7 +119,11 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     }
 
     onRestartToUpdateRequested(): void {
-        if (this.setuidBlocked && this.downloadedFile && /\.(rpm|deb)$/.test(this.downloadedFile)) {
+        if (this.pkconInstallRunning) {
+            autoUpdater.logger.info('PackageKit installation already running; ignoring duplicate restart request');
+            return;
+        }
+        if (process.platform === 'linux' && this.downloadedFile && /\.(rpm|deb)$/.test(this.downloadedFile)) {
             this.installWithPackageKit(this.downloadedFile);
         } else {
             autoUpdater.quitAndInstall();
@@ -186,13 +177,20 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
     }
 
     private installWithPackageKit(file: string): void {
+        this.pkconInstallRunning = true;
         const command = 'pkcon';
         const args = ['install-local', '--noninteractive', '--allow-untrusted', file];
         autoUpdater.logger.info(`Installing update with PackageKit: ${command} ${args.join(' ')}`);
         execFile(command, args, { timeout: 10 * 60 * 1000 }, err => {
+            this.pkconInstallRunning = false;
             if (!err) {
                 app.relaunch();
                 app.quit();
+                return;
+            }
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                autoUpdater.logger.warn('PackageKit (pkcon) not found; falling back to quitAndInstall');
+                autoUpdater.quitAndInstall();
                 return;
             }
             const manualCommand = file.endsWith('.rpm')

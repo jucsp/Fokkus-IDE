@@ -1750,21 +1750,21 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                     </div>
                 ))}
                 {dispatching && (
-                    <div style={{ display: 'flex', alignItems: 'center', alignSelf: 'center', margin: '8px 0', padding: '8px 12px', background: 'var(--theia-dropdown-background)', border: '1px solid var(--theia-dropdown-border)', borderRadius: '16px', color: 'var(--theia-descriptionForeground)', fontSize: '0.9em', maxWidth: '80%', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', alignSelf: 'center', margin: '8px 0', padding: '8px 12px', background: 'var(--theia-dropdown-background)', border: '1px solid var(--theia-dropdown-border)', borderRadius: '16px', color: 'var(--theia-descriptionForeground)', fontSize: '0.9em', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', gap: '8px' }}>
                         <i className="fa fa-spinner fa-spin" />
-                        <span>{stopping ? 'Deteniendo...' : loadingText}</span>
+                        <span style={{ overflowWrap: 'anywhere' }}>{stopping ? 'Deteniendo...' : loadingText}</span>
                     </div>
                 )}
             </div>
 
-            <div style={{ padding: '8px', borderTop: '1px solid var(--theia-panel-border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ flexGrow: 1, background: 'var(--theia-scrollbarSlider-background)', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ width: `${progressPercent}%`, height: '100%', background: progressPercent > 90 ? '#f87171' : 'var(--theia-button-background)' }} />
+            <div className='fokkus-chat-usage'>
+                <div className='fokkus-chat-usage-track'>
+                    <div className={`fokkus-chat-usage-fill${progressPercent > 90 ? ' fokkus-chat-usage-fill--danger' : ''}`} style={{ width: `${progressPercent}%` }} />
                 </div>
-                <span style={{ fontSize: '0.8em', color: 'var(--theia-descriptionForeground)' }}>{Math.round(currentChars/1000)}k / {MAX_CHARS/1000}k</span>
-                <button onClick={compactChatHistory} title="Compactar historial" style={{ background: 'var(--theia-button-background)', border: 'none', color: 'var(--theia-button-foreground)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span className='fokkus-chat-usage-count'>{Math.round(currentChars/1000)}k / {MAX_CHARS/1000}k</span>
+                <button onClick={compactChatHistory} title="Compactar historial" className='fokkus-chat-usage-compact'>
                     <i className="fa fa-broom" />
-                    <span style={{ fontSize: '0.9em' }}>Compactar</span>
+                    <span className='fokkus-chat-usage-label'>Compactar</span>
                 </button>
             </div>
             <div className='fokkus-chat-inputbar'>
@@ -1794,9 +1794,9 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                 >
                     <i className='fa fa-paperclip' />
                 </button>
-                <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                <div className='fokkus-chat-compose'>
                     {attachments.length > 0 && (
-                        <div style={{ display: 'flex', gap: '4px', paddingBottom: '4px', overflowX: 'auto' }}>
+                        <div className='fokkus-chat-attachments'>
                             {attachments.map((att, idx) => (
                                 <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
                                     <img src={`data:${att.mimeType};base64,${att.base64Data}`} style={{ height: '40px', borderRadius: '4px' }} title={att.fileName} />

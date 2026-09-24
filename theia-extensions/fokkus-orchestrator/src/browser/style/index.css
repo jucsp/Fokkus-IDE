@@ -1047,14 +1047,21 @@
 }
 
 /* Chat Widget Layout */
+#fokkus-chat-widget {
+    min-width: 260px;
+}
+
 .fokkus-chat {
     display: flex;
     flex-direction: column;
     height: 100%;
     width: 100%;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
     box-sizing: border-box;
+    container-type: inline-size;
+    container-name: fokkus-chat;
 }
 
 .fokkus-chat-messages {
@@ -1070,6 +1077,7 @@
 .fokkus-chat-message {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .fokkus-chat-message--user {
@@ -1083,13 +1091,15 @@
 
 .fokkus-chat-bubble {
     max-width: 85%;
+    min-width: 0;
+    box-sizing: border-box;
     padding: 12px 16px;
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 0.88rem;
     line-height: 1.5;
-    word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .fokkus-chat-message--user .fokkus-chat-bubble {
@@ -1108,6 +1118,11 @@
     border-color: rgba(248, 113, 113, 0.3);
     border-bottom-left-radius: 4px;
     color: #fca5a5;
+}
+
+.fokkus-chat-markdown {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .fokkus-chat-markdown p {
@@ -1129,10 +1144,30 @@
     border-radius: 8px;
     overflow-x: auto;
     margin: 10px 0;
+    max-width: 100%;
 }
 .fokkus-chat-markdown pre code {
     background: transparent;
     padding: 0;
+    overflow-wrap: normal;
+    white-space: pre;
+}
+.fokkus-chat-markdown table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    /* anywhere would let cells shrink to one letter; scroll the table instead */
+    overflow-wrap: normal;
+}
+.fokkus-chat-markdown th,
+.fokkus-chat-markdown td {
+    padding: 4px 8px;
+}
+.fokkus-chat-markdown img,
+.fokkus-chat-markdown svg {
+    max-width: 100%;
+    height: auto;
 }
 
 .fokkus-chat-inputbar {
@@ -1168,16 +1203,129 @@
 }
 
 .fokkus-chat-inputbar .fokkus-prompt-input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 10px 14px;
     transition: all 0.2s ease;
 }
+.fokkus-chat-inputbar .fokkus-prompt-input::placeholder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .fokkus-chat-inputbar .fokkus-prompt-input:focus {
     border-color: rgba(59, 130, 246, 0.55);
     background: rgba(255, 255, 255, 0.06);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.fokkus-chat-usage {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px;
+    border-top: 1px solid var(--theia-panel-border);
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.fokkus-chat-usage-track {
+    flex: 1 1 auto;
+    min-width: 40px;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--theia-scrollbarSlider-background);
+}
+
+.fokkus-chat-usage-fill {
+    height: 100%;
+    background: var(--theia-button-background);
+}
+
+.fokkus-chat-usage-fill--danger {
+    background: #f87171;
+}
+
+.fokkus-chat-usage-count {
+    font-size: 0.8em;
+    color: var(--theia-descriptionForeground);
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.fokkus-chat-usage-compact {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--theia-button-background);
+    color: var(--theia-button-foreground);
+    white-space: nowrap;
+}
+
+.fokkus-chat-usage-label {
+    font-size: 0.9em;
+}
+
+.fokkus-chat-compose {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.fokkus-chat-attachments {
+    display: flex;
+    gap: 4px;
+    padding-bottom: 4px;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+@container fokkus-chat (max-width: 360px) {
+    .fokkus-chat-messages {
+        padding: 14px 10px;
+        gap: 12px;
+    }
+    .fokkus-chat-bubble {
+        max-width: 100%;
+        padding: 10px 12px;
+    }
+    .fokkus-chat-inputbar {
+        gap: 6px;
+        padding: 10px 10px 16px;
+    }
+    .fokkus-chat-usage {
+        gap: 8px;
+        padding: 6px 10px;
+    }
+    .fokkus-chat-usage-label {
+        display: none;
+    }
+    .fokkus-chat-gear {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+        border-radius: 10px;
+    }
+    .fokkus-chat-inputbar .fokkus-prompt-send {
+        padding: 8px 12px;
+    }
+}
+
+@container fokkus-chat (max-width: 280px) {
+    .fokkus-chat-usage-count {
+        display: none;
+    }
 }
 
 /* Swarm Builder (React Flow) — the graph is the only Team Builder surface now,

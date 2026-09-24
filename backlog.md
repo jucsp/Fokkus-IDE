@@ -10,6 +10,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #5 Detección de proyecto y contexto: el agente reconoce la carpeta abierta sin necesidad de workspace (`.theia-workspace`) y sigue el protocolo jerárquico de contexto (historial -> backlog -> proyecto).
 
 ## Bugs Reportados
+- [x] #16 Responsive horizontal del chat se rompe al estrechar el panel lateral (squished text).
+  - _Fix v1.0.9:_ el panel Fokkus Team tiene ancho mínimo de 260px; las burbujas, el textarea y el markdown (tablas, bloques de código, URLs largas) ya no desbordan ni se aplastan, y la barra de uso y el input se compactan con container queries en anchos chicos.
 - [x] #14 Error de instalación Auto-Updater (RPM): Falla elevación de privilegios con `pkexec must be setuid root`.
   - _Fix v1.0.6:_ la app hereda `NoNewPrivs=1` del lanzador y eso anula el setuid de pkexec/sudo. Si se detecta, la instalación de `.rpm`/`.deb` se hace con PackageKit (`pkcon install-local`, sin setuid). Si falla, se muestra el comando manual.
   - _Fix v1.0.8 (regresión):_ la detección de `NoNewPrivs` no cubría todos los casos (en el cliente no se activó y electron-updater volvió a usar pkexec). Ahora en Linux los `.rpm`/`.deb` se instalan siempre con PackageKit (`pkcon install-local`); solo si `pkcon` no existe se usa el instalador de electron-updater. La instalación automática al cerrar la app queda desactivada en Linux.
@@ -20,6 +22,9 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
+- [ ] #18 Permitir configurar roles Product Owner de tipo API (eliminar restricción estricta de CLI).
+- [ ] #17 Agregar ejemplos de configuraciones de agentes CLI en la sección de Ayuda de Providers.
+- [ ] #15 Abrir carpeta en el explorador al arrastrarla dentro del IDE (Drag and Drop).
 - [x] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
 - [x] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).

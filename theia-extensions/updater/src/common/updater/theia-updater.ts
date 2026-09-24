@@ -31,6 +31,7 @@ export const TheiaUpdaterClient = Symbol('TheiaUpdaterClient');
 export interface UpdaterError {
     message: string;
     errorLogPath?: string;
+    manualCommand?: string;
 }
 
 export interface UpdateInfo {

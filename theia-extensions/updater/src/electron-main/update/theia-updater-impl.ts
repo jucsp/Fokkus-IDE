@@ -12,7 +12,7 @@ import { app } from '@theia/core/electron-shared/electron';
 import { TheiaUpdater, TheiaUpdaterClient, UpdateInfo, UpdaterSettings } from '../../common/updater/theia-updater';
 import { injectable } from '@theia/core/shared/inversify';
 import { CancellationToken } from 'builder-util-runtime';
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
 
 const GITHUB_OWNER = 'jucsp';
 const GITHUB_REPO = 'Fokkus-IDE';
@@ -178,31 +178,146 @@ export class TheiaUpdaterImpl implements TheiaUpdater, ElectronMainApplicationCo
 
     private installWithPackageKit(file: string): void {
         this.pkconInstallRunning = true;
-        const command = 'pkcon';
-        const args = ['install-local', '--noninteractive', '--allow-untrusted', file];
-        autoUpdater.logger.info(`Installing update with PackageKit: ${command} ${args.join(' ')}`);
-        execFile(command, args, { timeout: 10 * 60 * 1000 }, err => {
+        const pythonScript = this.packageKitPythonScript();
+        const args = ['-c', pythonScript, file];
+        autoUpdater.logger.info(`Installing update with PackageKit: pkcon install-local --plain --allow-untrusted ${file}`);
+        const child = spawn('python3', args, {
+            stdio: 'pipe',
+            env: { ...process.env, LC_ALL: 'C.UTF-8' }
+        });
+        let stdout = '';
+        let stderr = '';
+        let promptResponses = 0;
+        let finished = false;
+        let timedOut = false;
+        const timeout = setTimeout(() => {
+            if (!finished) {
+                autoUpdater.logger.warn('PackageKit installation timed out; terminating pkcon');
+                timedOut = true;
+                child.kill('SIGTERM');
+            }
+        }, 10 * 60 * 1000);
+        timeout.unref();
+
+        const finish = (code?: number, pythonError?: NodeJS.ErrnoException): void => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            clearTimeout(timeout);
             this.pkconInstallRunning = false;
-            if (!err) {
+            if (pythonError) {
+                this.reportPackageKitError(file, undefined, stdout, stderr, pythonError);
+                return;
+            }
+            if (code === 0) {
                 app.relaunch();
                 app.quit();
                 return;
             }
-            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            if (code === 127) {
                 autoUpdater.logger.warn('PackageKit (pkcon) not found; falling back to quitAndInstall');
                 autoUpdater.quitAndInstall();
                 return;
             }
-            const manualCommand = file.endsWith('.rpm')
-                ? `sudo dnf install "${file}"`
-                : `sudo apt install "${file}"`;
-            autoUpdater.logger.error('PackageKit installation failed', err);
-            const errorLogPath = autoUpdater.logger.transports.file.getFile().path;
-            this.clients.forEach(c => c.reportError({
-                message: `Unable to install the update automatically. Please run: ${manualCommand}`,
-                errorLogPath
-            }));
+            this.reportPackageKitError(file, code, stdout, stderr, undefined, timedOut);
+        };
+
+        child.stdout.on('data', (chunk: Buffer) => {
+            const text = chunk.toString().replace(/\r/g, '');
+            stdout = this.appendLimited(stdout, text);
+            const prompts = this.countPackageKitPrompts(stdout);
+            while (promptResponses < prompts) {
+                promptResponses++;
+                // Older pkcon versions flush the terminal input right after printing the prompt,
+                // so answer with a short delay to avoid the reply being discarded.
+                setTimeout(() => {
+                    if (!finished) {
+                        child.stdin.write('y\n');
+                    }
+                }, 500);
+            }
         });
+
+        child.stderr.on('data', (chunk: Buffer) => {
+            const text = chunk.toString().replace(/\r/g, '');
+            stderr = this.appendLimited(stderr, text);
+        });
+
+        child.stdin.on('error', () => {
+            // Ignore write errors once the child has exited.
+        });
+
+        child.on('error', err => finish(undefined, err));
+
+        child.on('close', (code, signal) => finish(!signal && typeof code === 'number' ? code : -1));
+
+    }
+
+    private reportPackageKitError(file: string, code: number | undefined, stdout: string, stderr: string,
+        pythonError?: NodeJS.ErrnoException, timedOut = false): void {
+        const detail = pythonError
+            ? `python3 not available: ${pythonError.message}`
+            : timedOut
+                ? 'timed out waiting for PackageKit'
+                : this.extractPackageKitErrorDetail(stdout, stderr, code);
+        const manualCommand = this.packageKitManualCommand(file);
+        autoUpdater.logger.error(`PackageKit installation failed (exit code: ${code ?? 'unknown'})`
+            + `\n--- stdout ---\n${stdout}\n--- stderr ---\n${stderr}`
+            + (pythonError ? `\n--- error ---\n${pythonError.stack ?? pythonError.message}` : ''));
+        const errorLogPath = autoUpdater.logger.transports.file.getFile().path;
+        this.clients.forEach(c => c.reportError({
+            message: `Unable to install the update automatically (${detail}). Please run in a terminal: ${manualCommand}`,
+            errorLogPath,
+            manualCommand
+        }));
+    }
+
+    private packageKitManualCommand(file: string): string {
+        return file.endsWith('.rpm')
+            ? `sudo dnf install "${file}"`
+            : `sudo apt install "${file}"`;
+    }
+
+    private extractPackageKitErrorDetail(stdout: string, stderr: string, code: number | undefined): string {
+        const combined = `${stdout}\n${stderr}`;
+        const lines = combined.split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line.startsWith('Fatal error:')) {
+                return line.slice('Fatal error:'.length).trim();
+            }
+            if (line.startsWith('Error:')) {
+                return line.slice('Error:'.length).trim();
+            }
+        }
+        return `exit code ${code ?? 'unknown'}`;
+    }
+
+    private appendLimited(current: string, chunk: string): string {
+        const combined = current + chunk;
+        const maxLength = 64 * 1024;
+        if (combined.length <= maxLength) {
+            return combined;
+        }
+        return combined.slice(combined.length - maxLength);
+    }
+
+    private countPackageKitPrompts(text: string): number {
+        const matches = text.match(/\[(N\/y|Y\/n)\]/g);
+        return matches ? matches.length : 0;
+    }
+
+    private packageKitPythonScript(): string {
+        // pkcon reads its confirmation prompts from the controlling terminal, not stdin,
+        // so it has to run inside a pseudo-terminal when the IDE is launched from the desktop.
+        return [
+            'import os, pty, shutil, sys',
+            'if shutil.which("pkcon") is None:',
+            '    sys.exit(127)',
+            'status = pty.spawn(["pkcon", "install-local", "--plain", "--allow-untrusted", sys.argv[1]])',
+            'sys.exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1)'
+        ].join('\n');
     }
 
     private stopUpdateCheckTimer(): void {

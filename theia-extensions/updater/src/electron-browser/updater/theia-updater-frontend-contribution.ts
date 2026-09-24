@@ -22,6 +22,7 @@ import { PreferenceScope, PreferenceService } from '@theia/core/lib/common';
 import { TheiaUpdater, TheiaUpdaterClient, UpdaterError, UpdateInfo, UpdateAvailabilityInfo, UpdaterSettings } from '../../common/updater/theia-updater';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { CommonMenus, OpenerService } from '@theia/core/lib/browser';
+import { ClipboardService } from '@theia/core/lib/browser/clipboard-service';
 import { ElectronMainMenuFactory } from '@theia/core/lib/electron-browser/menu/electron-main-menu-factory';
 import URI from '@theia/core/lib/common/uri';
 import { URI as VSCodeURI } from 'vscode-uri';
@@ -126,6 +127,9 @@ export class TheiaUpdaterFrontendContribution implements CommandContribution, Me
 
     @inject(OpenerService)
     protected readonly openerService: OpenerService;
+
+    @inject(ClipboardService)
+    protected readonly clipboardService: ClipboardService;
 
     protected readyToUpdate = false;
 
@@ -252,10 +256,19 @@ export class TheiaUpdaterFrontendContribution implements CommandContribution, Me
 
     protected async handleError(error: UpdaterError): Promise<void> {
         this.stopProgress();
+        const actions: string[] = [];
+        if (error.manualCommand) {
+            actions.push('Copy Command');
+        }
         if (error.errorLogPath) {
-            const viewLogAction = 'View Error Log';
-            const answer = await this.messageService.error(error.message, viewLogAction);
-            if (answer === viewLogAction) {
+            actions.push('View Error Log');
+        }
+        if (actions.length > 0) {
+            const answer = await this.messageService.error(error.message, ...actions);
+            if (answer === 'Copy Command' && error.manualCommand) {
+                await this.clipboardService.writeText(error.manualCommand);
+                this.messageService.info('Command copied to clipboard: ' + error.manualCommand);
+            } else if (answer === 'View Error Log' && error.errorLogPath) {
                 const uri = new URI(VSCodeURI.file(error.errorLogPath));
                 const opener = await this.openerService.getOpener(uri);
                 opener.open(uri);

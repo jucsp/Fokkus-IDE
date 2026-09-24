@@ -87,6 +87,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     readonly onAgentLog: Event<string> = this.onAgentLogEmitter.event;
 
     protected readonly activeAgentProcesses = new Set<ChildProcess>();
+    protected readonly activeApiRequests = new Set<AbortController>();
     protected cancelRequested = false;
     protected dispatchesInFlight = 0;
 
@@ -189,11 +190,6 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         try {
             if (!poProvider) {
                 roleResults.push(this.skippedAgentResult('po', 'unknown', 'unknown', 'No se ha asignado un proveedor al rol de Product Owner (po).'));
-            } else if (poProvider.type !== 'cli' || !poProvider.config.cliCommand || poProvider.config.cliCommand.trim().length === 0) {
-                const reason = poProvider.type === 'api'
-                    ? `El Product Owner «${poProvider.name}» es de tipo API; el orquestador principal debe ser de tipo CLI en esta arquitectura.`
-                    : `El Product Owner «${poProvider.name}» no tiene un comando CLI configurado.`;
-                roleResults.push(this.skippedAgentResult(poRoleId, poProvider.id, poProvider.name, reason));
             } else if (this.cancelRequested) {
                 roleResults.push({
                     roleId: poRoleId,
@@ -203,6 +199,19 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
                     output: '',
                     error: 'Ejecución detenida por el usuario.'
                 });
+            } else if (poProvider.type === 'api') {
+                const endpoint = (poProvider.config.apiEndpoint || '').trim();
+                const model = (poProvider.config.model || '').trim();
+                if (!endpoint || !model) {
+                    const missing = [!endpoint ? 'apiEndpoint' : '', !model ? 'model' : ''].filter(Boolean).join(' y ');
+                    roleResults.push(this.skippedAgentResult(poRoleId, poProvider.id, poProvider.name,
+                        `El Product Owner «${poProvider.name}» es de tipo API y le falta configurar ${missing}.`));
+                } else {
+                    roleResults.push(await this.runApiAgent(poRoleId, poProvider, safePrompt));
+                }
+            } else if (!poProvider.config.cliCommand || poProvider.config.cliCommand.trim().length === 0) {
+                roleResults.push(this.skippedAgentResult(poRoleId, poProvider.id, poProvider.name,
+                    `El Product Owner «${poProvider.name}» no tiene un comando CLI configurado.`));
             } else {
                 const result = await this.runCliAgent(poRoleId, poProvider, poProvider.config.cliCommand.trim(), safePrompt, cwd, teamEnvs);
                 roleResults.push(result);
@@ -581,6 +590,117 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         }
     }
 
+    /**
+     * Ejecuta al Product Owner vía una API compatible con OpenAI Chat Completions.
+     * A diferencia de un PO CLI, solo responde texto (planifica y delega); no
+     * ejecuta comandos ni edita archivos por sí mismo.
+     */
+    private async runApiAgent(roleId: string, provider: DynamicProvider, prompt: string): Promise<SwarmAgentResult> {
+        const endpoint = (provider.config.apiEndpoint || '').trim().replace(/\/+$/, '');
+        const model = (provider.config.model || '').trim();
+        const apiKey = (provider.config.apiKey || '').trim();
+        const controller = new AbortController();
+        this.activeApiRequests.add(controller);
+        try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+            const response = await fetch(`${endpoint}/chat/completions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: prompt }],
+                    stream: false
+                }),
+                signal: controller.signal
+            });
+
+            if (!response.ok) {
+                const bodyText = await response.text();
+                let apiMessage = bodyText.trim();
+                try {
+                    const parsed: unknown = JSON.parse(bodyText);
+                    if (parsed && typeof parsed === 'object') {
+                        const error = (parsed as { error?: unknown }).error;
+                        if (error && typeof error === 'object') {
+                            const message = (error as { message?: unknown }).message;
+                            if (typeof message === 'string' && message.trim()) {
+                                apiMessage = message.trim();
+                            }
+                        }
+                    }
+                } catch {
+                    // El cuerpo no es JSON; se usa el texto tal cual.
+                }
+                const truncated = apiMessage.length > 500 ? `${apiMessage.slice(0, 500)}…` : apiMessage;
+                return {
+                    roleId,
+                    providerId: provider.id,
+                    providerName: provider.name,
+                    status: 'failed',
+                    output: '',
+                    error: `La API respondió HTTP ${response.status}: ${truncated || 'sin detalle'}`
+                };
+            }
+
+            const data: unknown = await response.json();
+            let content: unknown;
+            if (data && typeof data === 'object') {
+                const choices = (data as { choices?: unknown }).choices;
+                if (Array.isArray(choices) && choices.length > 0) {
+                    const first = choices[0];
+                    if (first && typeof first === 'object') {
+                        const message = (first as { message?: unknown }).message;
+                        if (message && typeof message === 'object') {
+                            content = (message as { content?: unknown }).content;
+                        }
+                    }
+                }
+            }
+
+            if (typeof content !== 'string' || content.trim().length === 0) {
+                return {
+                    roleId,
+                    providerId: provider.id,
+                    providerName: provider.name,
+                    status: 'failed',
+                    output: '',
+                    error: 'La API no devolvió contenido.'
+                };
+            }
+            return {
+                roleId,
+                providerId: provider.id,
+                providerName: provider.name,
+                status: 'completed',
+                output: content.trim()
+            };
+        } catch (error) {
+            if (controller.signal.aborted || this.cancelRequested) {
+                return {
+                    roleId,
+                    providerId: provider.id,
+                    providerName: provider.name,
+                    status: 'cancelled',
+                    output: '',
+                    error: 'Ejecución detenida por el usuario.'
+                };
+            }
+            return {
+                roleId,
+                providerId: provider.id,
+                providerName: provider.name,
+                status: 'failed',
+                output: '',
+                error: error instanceof Error ? error.message : String(error)
+            };
+        } finally {
+            this.activeApiRequests.delete(controller);
+        }
+    }
+
     async getDesktopEnvironment(): Promise<DesktopEnvironment> {
         return {
             platform: process.platform,
@@ -762,6 +882,9 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         this.cancelRequested = true;
         for (const child of this.activeAgentProcesses) {
             this.killProcessTree(child);
+        }
+        for (const controller of this.activeApiRequests) {
+            controller.abort();
         }
     }
 

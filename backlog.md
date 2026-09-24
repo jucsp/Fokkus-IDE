@@ -23,7 +23,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
-- [ ] #18 Permitir configurar roles Product Owner de tipo API (eliminar restricción estricta de CLI).
+- [x] #18 Permitir configurar roles Product Owner de tipo API (eliminar restricción estricta de CLI).
+  - _Fix v1.0.11:_ el backend ya no descarta al PO de tipo API: lo ejecuta contra un endpoint compatible con OpenAI (`POST {apiEndpoint}/chat/completions`, con `apiKey` y `model` del proveedor). Si falta el endpoint o el modelo, se avisa qué falta. El botón «Stop» también cancela la petición HTTP. Un PO vía API solo responde en el chat (planifica y delega): para que edite archivos y ejecute comandos sigue haciendo falta un agente CLI. La ayuda de Providers ya no dice que el PO debe ser CLI.
 - [ ] #17 Agregar ejemplos de configuraciones de agentes CLI en la sección de Ayuda de Providers.
 - [ ] #15 Abrir carpeta en el explorador al arrastrarla dentro del IDE (Drag and Drop).
 - [x] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.

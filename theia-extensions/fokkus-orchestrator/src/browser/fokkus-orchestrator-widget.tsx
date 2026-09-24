@@ -200,7 +200,7 @@ const PROVIDER_HELP_GUIDES: ProviderHelpGuide[] = [
         keyUrl: 'https://console.anthropic.com/settings/keys',
         baseUrl: 'https://api.anthropic.com/v1/',
         models: ['claude-sonnet-5', 'claude-opus-5-5', 'claude-haiku-4-5'],
-        note: 'Para el rol Product Owner también se puede usar Claude Code como CLI (comando claude).'
+        note: 'Compatible con OpenAI. También puedes usar Claude Code como agente CLI (comando claude).'
     },
     {
         name: 'Google Gemini',
@@ -387,7 +387,10 @@ function ProvidersPanel({ providersState, onProvidersChange, windowService }: Pr
                         ))}
                     </div>
                     <p className='fokkus-help-footnote'>Los nombres de modelos cambian con el tiempo; revisa la documentación oficial de cada proveedor.</p>
-                    <p className='fokkus-help-warning'><i className='fa fa-exclamation-triangle' /> El rol Product Owner debe ser de tipo CLI (así lo exige el backend).</p>
+                    <p className='fokkus-help-warning'>
+                        <i className='fa fa-info-circle' /> El Product Owner puede ser CLI o API. Vía API solo responde en el chat
+                        (planifica y delega); para que edite archivos y ejecute comandos usa un agente CLI.
+                    </p>
                 </div>
             )}
 

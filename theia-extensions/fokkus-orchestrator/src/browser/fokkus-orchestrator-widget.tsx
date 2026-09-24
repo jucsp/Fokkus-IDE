@@ -17,6 +17,7 @@ import { CommandService } from '@theia/core/lib/common/command';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { ConfirmDialog } from '@theia/core/lib/browser';
+import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 
 import {
@@ -85,7 +86,7 @@ const PROVIDER_FIELDS_BY_TYPE: Record<DynamicProvider['type'], ProviderFieldTemp
     api: [
         { key: 'apiKey', label: 'API Key', placeholder: 'sk-••••••••••••••••', type: 'password' },
         { key: 'apiEndpoint', label: 'Base URL', placeholder: 'https://api.ejemplo.com', type: 'text' },
-        { key: 'model', label: 'Modelo', placeholder: 'ej. deepseek-reasoner, gpt-4o', type: 'text' }
+        { key: 'model', label: 'Modelo', placeholder: 'claude-sonnet-5, gemini-2.5-pro, deepseek-chat, gpt-4o', type: 'text' }
     ],
     cli: [
         { key: 'cliCommand', label: 'Comando CLI', placeholder: 'claude', type: 'text' }
@@ -181,14 +182,70 @@ const PROVIDER_TYPE_ICON: Record<DynamicProvider['type'], string> = {
 
 const PROVIDER_ACCENT = '#3b82f6';
 
+interface ProviderHelpGuide {
+    name: string;
+    type: DynamicProvider['type'];
+    keyUrl?: string;
+    baseUrl?: string;
+    installUrl?: string;
+    cliValue?: string;
+    models: string[];
+    note: string;
+}
+
+const PROVIDER_HELP_GUIDES: ProviderHelpGuide[] = [
+    {
+        name: 'Anthropic (Claude)',
+        type: 'api',
+        keyUrl: 'https://console.anthropic.com/settings/keys',
+        baseUrl: 'https://api.anthropic.com/v1/',
+        models: ['claude-sonnet-5', 'claude-opus-5-5', 'claude-haiku-4-5'],
+        note: 'Para el rol Product Owner también se puede usar Claude Code como CLI (comando claude).'
+    },
+    {
+        name: 'Google Gemini',
+        type: 'api',
+        keyUrl: 'https://aistudio.google.com/apikey',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+        note: 'Endpoints compatibles con OpenAI.'
+    },
+    {
+        name: 'OpenAI (GPT)',
+        type: 'api',
+        keyUrl: 'https://platform.openai.com/api-keys',
+        baseUrl: 'https://api.openai.com/v1',
+        models: ['gpt-4o', 'gpt-4o-mini'],
+        note: 'Compatible con la API oficial de OpenAI.'
+    },
+    {
+        name: 'DeepSeek',
+        type: 'api',
+        keyUrl: 'https://platform.deepseek.com/api_keys',
+        baseUrl: 'https://api.deepseek.com',
+        models: ['deepseek-chat', 'deepseek-reasoner'],
+        note: 'Compatible con OpenAI.'
+    },
+    {
+        name: 'Ollama (local)',
+        type: 'cli',
+        installUrl: 'https://ollama.com/download',
+        cliValue: 'http://localhost:11434',
+        models: ['llama3.1', 'qwen2.5-coder'],
+        note: 'Los modelos se descargan con: ollama pull <modelo>.'
+    }
+];
+
 interface ProvidersPanelProps {
     providersState: ProvidersState;
     onProvidersChange: (state: ProvidersState) => void;
+    windowService: WindowService;
 }
 
-function ProvidersPanel({ providersState, onProvidersChange }: ProvidersPanelProps): React.ReactElement {
+function ProvidersPanel({ providersState, onProvidersChange, windowService }: ProvidersPanelProps): React.ReactElement {
     const providers = React.useMemo(() => Object.values(providersState), [providersState]);
     const [editingId, setEditingId] = React.useState<string | undefined>(undefined);
+    const [helpOpen, setHelpOpen] = React.useState(false);
     const [formName, setFormName] = React.useState('');
     const [formType, setFormType] = React.useState<DynamicProvider['type']>('cli');
     const [formConfig, setFormConfig] = React.useState<Record<string, string>>({});
@@ -207,12 +264,16 @@ function ProvidersPanel({ providersState, onProvidersChange }: ProvidersPanelPro
         setFormConfig({ ...provider.config });
     }, []);
 
-    const startCreate = React.useCallback(() => {
+    const startCreate = React.useCallback((template?: { name: string; type: DynamicProvider['type']; config: Record<string, string> }) => {
         setEditingId('__new__');
-        setFormName('');
-        setFormType('cli');
-        setFormConfig({});
+        setFormName(template ? template.name : '');
+        setFormType(template ? template.type : 'cli');
+        setFormConfig(template ? template.config : {});
     }, []);
+
+    const openExternal = React.useCallback((url: string) => {
+        windowService.openNewWindow(url, { external: true });
+    }, [windowService]);
 
     const removeProvider = React.useCallback((id: string) => {
         const next = { ...providersState };
@@ -246,11 +307,89 @@ function ProvidersPanel({ providersState, onProvidersChange }: ProvidersPanelPro
     return (
         <>
             <header className='fokkus-orchestrator-header'>
-                <h2 className='fokkus-orchestrator-title'>Proveedores de IA</h2>
-                <p className='fokkus-orchestrator-subtitle'>
-                    Registra los agentes que tu Swarm puede reclutar: claves de API, endpoints o comandos CLI locales.
-                </p>
+                <div className='fokkus-help-header'>
+                    <div>
+                        <h2 className='fokkus-orchestrator-title'>Proveedores de IA</h2>
+                        <p className='fokkus-orchestrator-subtitle'>
+                            Registra los agentes que tu Swarm puede reclutar: claves de API, endpoints o comandos CLI locales.
+                        </p>
+                    </div>
+                    <button type='button' className='fokkus-help-toggle' title='¿Cómo integrar proveedores?' aria-expanded={helpOpen} onClick={() => setHelpOpen(prev => !prev)}>
+                        <i className='fa fa-question-circle' />
+                        <span>Ayuda</span>
+                    </button>
+                </div>
             </header>
+
+            {helpOpen && (
+                <div className='fokkus-help-panel'>
+                    <div className='fokkus-help-grid'>
+                        {PROVIDER_HELP_GUIDES.map(guide => (
+                            <article className='fokkus-help-card' key={guide.name}>
+                                <div className='fokkus-help-card-header'>
+                                    <span className='fokkus-help-name'>{guide.name}</span>
+                                    <span className='fokkus-help-type'>{guide.type === 'api' ? 'API' : 'CLI'}</span>
+                                </div>
+                                {guide.type === 'api' ? (
+                                    <>
+                                        <div className='fokkus-help-row'>
+                                            <span className='fokkus-help-label'>Clave</span>
+                                            <a
+                                                className='fokkus-help-link'
+                                                href={guide.keyUrl}
+                                                onClick={event => { event.preventDefault(); openExternal(guide.keyUrl ?? ''); }}
+                                            >
+                                                {guide.keyUrl}
+                                            </a>
+                                        </div>
+                                        <div className='fokkus-help-row'>
+                                            <span className='fokkus-help-label'>Base URL</span>
+                                            <code className='fokkus-help-code'>{guide.baseUrl}</code>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className='fokkus-help-row'>
+                                            <span className='fokkus-help-label'>Instalación</span>
+                                            <a
+                                                className='fokkus-help-link'
+                                                href={guide.installUrl}
+                                                onClick={event => { event.preventDefault(); openExternal(guide.installUrl ?? ''); }}
+                                            >
+                                                {guide.installUrl}
+                                            </a>
+                                        </div>
+                                        <div className='fokkus-help-row'>
+                                            <span className='fokkus-help-label'>Comando CLI</span>
+                                            <code className='fokkus-help-code'>{guide.cliValue}</code>
+                                        </div>
+                                    </>
+                                )}
+                                <div className='fokkus-help-row'>
+                                    <span className='fokkus-help-label'>Modelos</span>
+                                    <div className='fokkus-help-models'>
+                                        {guide.models.map(model => (
+                                            <code className='fokkus-help-code' key={model}>{model}</code>
+                                        ))}
+                                    </div>
+                                </div>
+                                <p className='fokkus-help-note'>{guide.note}</p>
+                                {guide.type === 'api' && (
+                                    <button type='button' className='fokkus-help-use-btn' onClick={() => {
+                                        startCreate({ name: guide.name, type: 'api', config: { apiKey: '', apiEndpoint: guide.baseUrl ?? '', model: guide.models[0] ?? '' } });
+                                        setHelpOpen(false);
+                                    }}>
+                                        <i className='fa fa-magic' />
+                                        <span>Usar esta configuración</span>
+                                    </button>
+                                )}
+                            </article>
+                        ))}
+                    </div>
+                    <p className='fokkus-help-footnote'>Los nombres de modelos cambian con el tiempo; revisa la documentación oficial de cada proveedor.</p>
+                    <p className='fokkus-help-warning'><i className='fa fa-exclamation-triangle' /> El rol Product Owner debe ser de tipo CLI (así lo exige el backend).</p>
+                </div>
+            )}
 
             <div className='fokkus-provider-grid'>
                 {providers.map(provider => (
@@ -277,7 +416,7 @@ function ProvidersPanel({ providersState, onProvidersChange }: ProvidersPanelPro
                 ))}
 
                 {!isFormOpen && (
-                    <button type='button' className='fokkus-add-card' onClick={startCreate}>
+                    <button type='button' className='fokkus-add-card' onClick={() => startCreate()}>
                         <i className='fa fa-plus' />
                         <span>Agregar proveedor</span>
                     </button>
@@ -977,9 +1116,10 @@ interface FokkusSettingsAppProps {
     preferenceService: PreferenceService;
     orchestratorServer: FokkusOrchestratorServer;
     workspaceService: WorkspaceService;
+    windowService: WindowService;
 }
 
-function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceService }: FokkusSettingsAppProps): React.ReactElement {
+function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceService, windowService }: FokkusSettingsAppProps): React.ReactElement {
     const [activeTab, setActiveTab] = React.useState<FokkusSettingsTabId>('providers');
     const [providersState, setProvidersState] = React.useState<ProvidersState>(() => normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY)));
     const [rolesState, setRolesState] = React.useState<RolesState>(() => normalizeRolesState(preferenceService.get(ROLES_PREFERENCE_KEY)));
@@ -1137,7 +1277,7 @@ function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceSer
                 <span className='fokkus-tab-indicator' />
             </nav>
 
-            {activeTab === 'providers' && <ProvidersPanel providersState={providersState} onProvidersChange={handleProvidersChange} />}
+            {activeTab === 'providers' && <ProvidersPanel providersState={providersState} onProvidersChange={handleProvidersChange} windowService={windowService} />}
             {activeTab === 'roles' && <RolesPanel rolesState={rolesState} onRolesChange={handleRolesChange} />}
             {activeTab === 'team' && (
                 <TeamBuilderPanel
@@ -1172,6 +1312,9 @@ export class FokkusSettingsWidget extends ReactWidget {
     @inject(WorkspaceService)
     protected readonly workspaceService: WorkspaceService;
 
+    @inject(WindowService)
+    protected readonly windowService: WindowService;
+
     @postConstruct()
     protected init(): void {
         this.id = FokkusSettingsWidget.ID;
@@ -1188,6 +1331,7 @@ export class FokkusSettingsWidget extends ReactWidget {
                 preferenceService={this.preferenceService}
                 orchestratorServer={this.orchestratorServer}
                 workspaceService={this.workspaceService}
+                windowService={this.windowService}
             />
         );
     }

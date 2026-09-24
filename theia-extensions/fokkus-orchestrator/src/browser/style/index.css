@@ -1402,3 +1402,183 @@
     transform: scale(1.2);
     background: #60a5fa;
 }
+
+/* Providers help panel */
+.fokkus-help-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fokkus-help-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.fokkus-help-toggle:hover {
+    border-color: rgba(59, 130, 246, 0.55);
+    background: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+}
+
+.fokkus-help-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding: 16px;
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fokkus-help-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+}
+
+.fokkus-help-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.fokkus-help-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fokkus-help-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--theia-foreground);
+}
+
+.fokkus-help-type {
+    flex: 0 0 auto;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #93c5fd;
+    background: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    padding: 3px 8px;
+    border-radius: 999px;
+}
+
+.fokkus-help-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fokkus-help-label {
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
+}
+
+.fokkus-help-link {
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.76rem;
+    color: #93c5fd;
+    text-decoration: none;
+    word-break: break-all;
+    user-select: text;
+}
+
+.fokkus-help-link:hover {
+    text-decoration: underline;
+}
+
+.fokkus-help-code {
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.76rem;
+    color: var(--theia-foreground);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 5px;
+    user-select: text;
+    word-break: break-all;
+}
+
+.fokkus-help-models {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.fokkus-help-note {
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.4;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
+}
+
+.fokkus-help-use-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: auto;
+    padding: 8px 12px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: linear-gradient(135deg, #3b82f6, #38bdf8);
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fokkus-help-use-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -10px rgba(59, 130, 246, 0.85);
+}
+
+.fokkus-help-footnote {
+    margin: 0;
+    font-size: 0.74rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
+}
+
+.fokkus-help-warning {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #fbbf24;
+}
+
+.fokkus-help-warning .fa {
+    color: #fbbf24;
+}

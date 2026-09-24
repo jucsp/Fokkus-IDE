@@ -24,7 +24,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
 - [ ] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
 - [ ] #4 Implementar integración con Github (mediante token o OAuth deseable).
-- [ ] #3 En Providers, agregar helper que de ayuda de como integrar proveedores (Gemini, Claude, GPT, DeepSeek).
+- [x] #3 En Providers, agregar helper que de ayuda de como integrar proveedores (Gemini, Claude, GPT, DeepSeek).
+  - _Fix v1.0.7:_ botón «Ayuda» en Settings > Providers que abre un panel con una guía por proveedor (Claude, Gemini, OpenAI, DeepSeek, Ollama): dónde crear la API Key, Base URL compatible con OpenAI y modelos de ejemplo. Los links se abren en el navegador del sistema y «Usar esta configuración» rellena el formulario de alta.
 
 ## Épica 2: Mejoras de Usuario (UX/UI) (Deuda Técnica)
 - [ ] Personalizar los iconos de la aplicación (Linux/Windows) con el logo oficial de Fokkus.

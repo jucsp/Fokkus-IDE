@@ -14,6 +14,8 @@ import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { PreferenceScope, PreferenceService } from '@theia/core/lib/common';
 import { CommandService } from '@theia/core/lib/common/command';
+import { Emitter } from '@theia/core/lib/common/event';
+import { MessageService } from '@theia/core/lib/common/message-service';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { ConfirmDialog } from '@theia/core/lib/browser';
@@ -1417,6 +1419,8 @@ interface FokkusChatAppProps {
     orchestratorServer: FokkusOrchestratorServer;
     commandService: CommandService;
     workspaceService: WorkspaceService;
+    subscribeExternalPrompts: (listener: (text: string) => void) => { dispose(): void };
+    messageService: MessageService;
 }
 
 const CustomCodeComponent: Components['code'] = ({ inline, className, children, ...props }: any) => {
@@ -1449,7 +1453,7 @@ const CustomCodeComponent: Components['code'] = ({ inline, className, children, 
     );
 };
 
-function FokkusChatApp({ preferenceService, orchestratorServer, commandService, workspaceService }: FokkusChatAppProps): React.ReactElement {
+function FokkusChatApp({ preferenceService, orchestratorServer, commandService, workspaceService, subscribeExternalPrompts, messageService }: FokkusChatAppProps): React.ReactElement {
     const [messages, setMessages] = React.useState<ChatMessage[]>([{
         id: nextChatMessageId(),
         role: 'assistant',
@@ -1512,6 +1516,13 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const promptInputRef = React.useRef<HTMLTextAreaElement | undefined>(undefined);
     const fileInputRef = React.useRef<HTMLInputElement | undefined>(undefined);
     const messagesContainerRef = React.useRef<HTMLDivElement | undefined>(undefined);
+    // Evita que el historial cargado tarde borre un mensaje enviado por el usuario
+    // mientras la petición de historial seguía en vuelo.
+    const userSentRef = React.useRef(false);
+    // Los prompts externos (Kanban) esperan a que cargue el historial: si se enviaran antes,
+    // saveChatHistory guardaría solo el mensaje nuevo y se perdería el historial previo.
+    const [historyReady, setHistoryReady] = React.useState(false);
+    const queuedExternalPromptsRef = React.useRef<string[]>([]);
 
     React.useEffect(() => {
         let disposed = false;
@@ -1519,6 +1530,11 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             if (disposed) return;
             const workspacePath = getWorkspacePath(workspaceService);
             orchestratorServer.loadChatHistory(workspacePath).then(history => {
+                // Si el usuario ya envió un mensaje, el historial tardío se ignora
+                // para no sobrescribir el mensaje recién enviado.
+                if (userSentRef.current) {
+                    return;
+                }
                 if (history && history.length > 0) {
                     setMessages(history.map(msg => ({
                         id: nextChatMessageId(),
@@ -1526,7 +1542,12 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                         content: msg.content
                     })));
                 }
-            }).catch(e => console.error("[fokkus-orchestrator] Error loading chat history:", e));
+            }).catch(e => console.error("[fokkus-orchestrator] Error loading chat history:", e))
+                .finally(() => {
+                    if (!disposed) {
+                        setHistoryReady(true);
+                    }
+                });
         });
         return () => { disposed = true; };
     }, [orchestratorServer, workspaceService]);
@@ -1549,7 +1570,13 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         const disposable = orchestratorServer.onAgentLog(log => {
 
         });
-        return () => disposable.dispose();
+        // Por el proxy RPC no siempre llega un Disposable: sin la guarda, cerrar el chat lanzaba
+        // "dispose is not a function".
+        return () => {
+            if (typeof disposable?.dispose === 'function') {
+                disposable.dispose();
+            }
+        };
     }, [orchestratorServer]);
 
     const resizePromptInput = React.useCallback(() => {
@@ -1669,23 +1696,28 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         }
     }, [dispatching, stopping, orchestratorServer]);
 
-    const dispatchPrompt = React.useCallback(async () => {
-        const trimmed = promptText.trim();
-        if ((trimmed.length === 0 && attachments.length === 0) || dispatching) {
+    const dispatchPrompt = React.useCallback(async (overrideText?: string) => {
+        const external = typeof overrideText === 'string';
+        const trimmed = (external ? overrideText : promptText).trim();
+        const usedAttachments = external ? [] : attachments;
+        if ((trimmed.length === 0 && usedAttachments.length === 0) || dispatching) {
             return;
         }
-        
+        userSentRef.current = true;
+
         let msgContent = trimmed || 'Analiza la imagen adjunta.';
-        if (attachments.length > 0) {
-            msgContent += `\n*[${attachments.length} archivos adjuntos]*`;
+        if (usedAttachments.length > 0) {
+            msgContent += `\n*[${usedAttachments.length} archivos adjuntos]*`;
         }
 
         const userMsg: ChatMessage = { id: nextChatMessageId(), role: 'user', content: msgContent };
         const messagesWithUser = [...messages, userMsg];
         setMessages(messagesWithUser);
-        setPromptText('');
-        const currentAttachments = [...attachments];
-        setAttachments([]);
+        if (!external) {
+            setPromptText('');
+            setAttachments([]);
+        }
+        const currentAttachments = [...usedAttachments];
         setDispatching(true);
 
         const workspacePath = getWorkspacePath(workspaceService);
@@ -1775,13 +1807,62 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             setDispatching(false);
             setStopping(false);
         }
-    }, [promptText, dispatching, preferenceService, orchestratorServer]);
+    }, [promptText, dispatching, preferenceService, orchestratorServer, attachments, messages, workspaceService]);
+
+    // dispatchPrompt cambia de identidad en cada render; se guarda en un ref para que
+    // el listener de prompts externos siempre llame a la versión más reciente.
+    const dispatchPromptRef = React.useRef(dispatchPrompt);
+    dispatchPromptRef.current = dispatchPrompt;
+    const dispatchingRef = React.useRef(dispatching);
+    dispatchingRef.current = dispatching;
+
+    // Consume los prompts que llegan desde el Kanban (u otro widget). Si el chat está
+    // ocupado, el prompt se deja en el cuadro de texto y se avisa al usuario.
+    const handleExternalPrompt = React.useCallback((text: string) => {
+        if (dispatchingRef.current) {
+            setPromptText(text);
+            messageService.warn('Fokkus Team está ocupado: el prompt quedó en el cuadro de texto para enviarlo cuando termine.');
+            return;
+        }
+        dispatchPromptRef.current(text).catch(error => console.error('[fokkus-orchestrator] No se pudo enviar el prompt externo', error));
+    }, [messageService]);
+    const handleExternalPromptRef = React.useRef(handleExternalPrompt);
+    handleExternalPromptRef.current = handleExternalPrompt;
+    const historyReadyRef = React.useRef(historyReady);
+    historyReadyRef.current = historyReady;
+
+    React.useEffect(() => {
+        const disposable = subscribeExternalPrompts(text => {
+            if (!historyReadyRef.current) {
+                queuedExternalPromptsRef.current.push(text);
+                return;
+            }
+            handleExternalPromptRef.current(text);
+        });
+        return () => disposable.dispose();
+    }, [subscribeExternalPrompts]);
+
+    // Con el historial ya en pantalla (y dispatchPrompt re-creado con esos mensajes), se envían
+    // los prompts que llegaron antes. Solo el primero se despacha; el resto queda en el textarea.
+    React.useEffect(() => {
+        if (!historyReady) {
+            return;
+        }
+        const [first, ...rest] = queuedExternalPromptsRef.current.splice(0);
+        if (first !== undefined) {
+            handleExternalPromptRef.current(first);
+        }
+        if (rest.length > 0) {
+            setPromptText(rest[rest.length - 1]);
+            messageService.warn('Fokkus Team está ocupado: el prompt quedó en el cuadro de texto para enviarlo cuando termine.');
+        }
+    }, [historyReady, messageService]);
 
     const handlePromptKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         event.stopPropagation();
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            dispatchPrompt();
+            dispatchPrompt().catch(error => console.error('[fokkus-orchestrator] No se pudo despachar la instrucción', error));
         }
     }, [dispatchPrompt]);
 
@@ -1886,7 +1967,9 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                     <button
                         type='button'
                         className='fokkus-prompt-send'
-                        onClick={dispatchPrompt}
+                        onClick={() => {
+                            dispatchPrompt().catch(error => console.error('[fokkus-orchestrator] No se pudo despachar la instrucción', error));
+                        }}
                         disabled={promptText.trim().length === 0 && attachments.length === 0}
                         title='Enviar al Swarm'
                     >
@@ -1916,6 +1999,13 @@ export class FokkusChatWidget extends ReactWidget {
     @inject(WorkspaceService)
     protected readonly workspaceService: WorkspaceService;
 
+    @inject(MessageService)
+    protected readonly messageService: MessageService;
+
+    protected readonly onExternalPromptEmitter = new Emitter<string>();
+    protected pendingPrompts: string[] = [];
+    protected hasPromptListener = false;
+
     @postConstruct()
     protected init(): void {
         this.id = FokkusChatWidget.ID;
@@ -1923,8 +2013,35 @@ export class FokkusChatWidget extends ReactWidget {
         this.title.caption = FokkusChatWidget.LABEL;
         this.title.closable = true;
         this.title.iconClass = 'fa fa-users';
+        this.toDispose.push(this.onExternalPromptEmitter);
         this.update();
     }
+
+    /**
+     * Envía un prompt al chat desde fuera del widget (por ejemplo, el botón Play del Kanban).
+     * Si la app React aún no está suscrita, el texto queda en cola y se consume al montar.
+     */
+    public sendPrompt(text: string): void {
+        if (this.hasPromptListener) {
+            this.onExternalPromptEmitter.fire(text);
+        } else {
+            this.pendingPrompts.push(text);
+            this.update();
+        }
+    }
+
+    protected subscribeExternalPrompts = (listener: (text: string) => void): { dispose(): void } => {
+        this.hasPromptListener = true;
+        const disposable = this.onExternalPromptEmitter.event(listener);
+        const pending = this.pendingPrompts.splice(0);
+        pending.forEach(text => listener(text));
+        return {
+            dispose: () => {
+                this.hasPromptListener = false;
+                disposable.dispose();
+            }
+        };
+    };
 
     protected render(): React.ReactNode {
         return (
@@ -1933,6 +2050,8 @@ export class FokkusChatWidget extends ReactWidget {
                 orchestratorServer={this.orchestratorServer}
                 commandService={this.commandService}
                 workspaceService={this.workspaceService}
+                subscribeExternalPrompts={this.subscribeExternalPrompts}
+                messageService={this.messageService}
             />
         );
     }

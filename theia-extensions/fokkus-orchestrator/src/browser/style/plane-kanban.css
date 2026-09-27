@@ -1,0 +1,226 @@
+/********************************************************************************
+ * Plane Kanban widget — styles (prefixed with fokkus-kanban-)
+ ********************************************************************************/
+
+.fokkus-kanban {
+    position: relative;
+    height: 100%;
+    box-sizing: border-box;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+    background: var(--theia-editor-background);
+}
+
+.fokkus-kanban-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 24px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.fokkus-kanban-board {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.fokkus-kanban-column {
+    display: flex;
+    flex-direction: column;
+    width: 280px;
+    flex-shrink: 0;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+}
+
+.fokkus-kanban-column-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+}
+
+.fokkus-kanban-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.fokkus-kanban-column-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.fokkus-kanban-count {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.fokkus-kanban-column-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+.fokkus-kanban-column-empty {
+    padding: 14px 10px;
+    border: 1px dashed var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    border-radius: 8px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.78rem;
+    text-align: center;
+}
+
+.fokkus-kanban-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    outline: none;
+}
+
+.fokkus-kanban-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-kanban-card:focus-visible {
+    border-color: var(--theia-focusBorder);
+}
+
+.fokkus-kanban-card.selected {
+    border-color: var(--theia-focusBorder);
+}
+
+.fokkus-kanban-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fokkus-kanban-card-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.fokkus-kanban-card-meta {
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.fokkus-kanban-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--theia-button-background);
+    color: var(--theia-button-foreground);
+    font-size: 0.7rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.fokkus-kanban-play:hover {
+    filter: brightness(1.1);
+}
+
+.fokkus-kanban-play-labeled {
+    width: auto;
+    height: auto;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    gap: 6px;
+}
+
+.fokkus-kanban-drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: min(440px, 90%);
+    height: 100%;
+    box-sizing: border-box;
+    padding: 16px;
+    overflow-y: auto;
+    /* El tema fuerza --theia-editor-background a transparent: el drawer necesita fondo opaco. */
+    background: var(--theia-layout-color0, rgb(10, 10, 14));
+    backdrop-filter: blur(12px);
+    border-left: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+    z-index: 10;
+}
+
+.fokkus-kanban-drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.fokkus-kanban-drawer-close {
+    margin-left: auto;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.fokkus-kanban-drawer-close:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-kanban-drawer-title {
+    margin: 0 0 10px;
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-kanban-drawer-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-bottom: 12px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.78rem;
+}

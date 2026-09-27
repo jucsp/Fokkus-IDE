@@ -10,6 +10,7 @@
 import '../../src/browser/style/index.css';
 import '../../src/browser/style/theme.css';
 import '../../src/browser/style/plane-backlog.css';
+import '../../src/browser/style/plane-kanban.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { ContainerModule } from '@theia/core/shared/inversify';
@@ -19,6 +20,9 @@ import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contributi
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
 import { PlaneBacklogContribution } from './plane-backlog-contribution';
 import { PlaneBacklogWidget } from './plane-backlog-widget';
+import { PlaneKanbanContribution } from './plane-kanban-contribution';
+import { PlaneKanbanService } from './plane-kanban-service';
+import { PlaneKanbanWidget } from './plane-kanban-widget';
 
 export default new ContainerModule(bind => {
     // bindViewContribution already binds MenuContribution (and CommandContribution/KeybindingContribution)
@@ -51,6 +55,15 @@ export default new ContainerModule(bind => {
     bind(WidgetFactory).toDynamicValue(context => ({
         id: PlaneBacklogWidget.ID,
         createWidget: () => context.container.get<PlaneBacklogWidget>(PlaneBacklogWidget)
+    })).inSingletonScope();
+
+    bind(PlaneKanbanService).toSelf().inSingletonScope();
+
+    bindViewContribution(bind, PlaneKanbanContribution);
+    bind(PlaneKanbanWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: PlaneKanbanWidget.ID,
+        createWidget: () => context.container.get<PlaneKanbanWidget>(PlaneKanbanWidget)
     })).inSingletonScope();
 
     bind(PlaneServer).toDynamicValue(context => {

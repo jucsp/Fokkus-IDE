@@ -8,7 +8,7 @@
  ********************************************************************************/
 
 import * as React from 'react';
-import DOMPurify from '@theia/core/shared/dompurify';
+import { CommandService } from '@theia/core/lib/common/command';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
@@ -21,21 +21,12 @@ import {
     PlaneServer,
     PlaneState
 } from '../common/plane-protocol';
+import { PlaneIssueDetail } from './plane-issue-detail';
+import { PLANE_KANBAN_OPEN_COMMAND_ID, PlaneKanbanService } from './plane-kanban-service';
 
 export const PLANE_BACKLOG_WIDGET_ID = 'fokkus-backlog-widget';
 
 const FILTERS_STORAGE_KEY = 'fokkus.backlog.filters';
-/** La URL original va en este atributo: con `src` el webview pediría la imagen sin credenciales (401 e icono roto). */
-const PLANE_SRC_ATTR = 'data-plane-src';
-
-const SANITIZE_OPTIONS = {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'embed', 'svg', 'math', 'link', 'meta'],
-    // DOMPurify elimina por defecto cualquier atributo on*; se listan los más comunes
-    // para reforzar la política ante descripciones provenientes de Plane.
-    FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur', 'onchange', 'onsubmit'],
-    ADD_ATTR: [PLANE_SRC_ATTR]
-};
 
 function memberOptionLabel(member: PlaneMember): string {
     const name = member.displayName || member.fullName || member.email || member.id;
@@ -62,57 +53,14 @@ function normalizeForSearch(value: string): string {
     return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-/** Transforma `<image-component>` a `<img>` y sanitiza el HTML del detalle. */
-function buildDetailHtml(issue: PlaneIssue, config: PlaneConfigStatus | undefined): string {
-    const rawHtml = (issue.descriptionHtml || '').trim();
-    if (!rawHtml) {
-        return '';
-    }
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(rawHtml, 'text/html');
-
-    if (config) {
-        doc.querySelectorAll('image-component').forEach(el => {
-            const assetId = el.getAttribute('src')?.trim();
-            if (!assetId) {
-                el.remove();
-                return;
-            }
-            const url = `${config.baseUrl}/api/assets/v2/workspaces/${config.workspace}/projects/${issue.projectId}/${encodeURIComponent(assetId)}/`;
-            const img = doc.createElement('img');
-            img.setAttribute('src', url);
-            const width = el.getAttribute('width');
-            if (width) {
-                img.setAttribute('width', width);
-            }
-            el.replaceWith(img);
-        });
-    }
-
-    doc.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src')?.trim() ?? '';
-        img.removeAttribute('src');
-        if (!src) {
-            return;
-        }
-        try {
-            img.setAttribute(PLANE_SRC_ATTR, config ? new URL(src, config.baseUrl + '/').href : new URL(src).href);
-        } catch {
-            // URL no resoluble: la imagen se muestra como no disponible.
-        }
-    });
-
-    const dirty = doc.body ? doc.body.innerHTML : rawHtml;
-    return DOMPurify.sanitize(dirty, SANITIZE_OPTIONS);
-}
-
 interface PlaneBacklogAppProps {
     planeServer: PlaneServer;
     windowService: WindowService;
+    kanbanService: PlaneKanbanService;
+    commandService: CommandService;
 }
 
-function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): React.ReactElement {
+function PlaneBacklogApp({ planeServer, windowService, kanbanService, commandService }: PlaneBacklogAppProps): React.ReactElement {
     const [config, setConfig] = React.useState<PlaneConfigStatus | undefined>(undefined);
     const [connectionOpen, setConnectionOpen] = React.useState<boolean>(true);
 
@@ -142,7 +90,6 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
     const [statesLoading, setStatesLoading] = React.useState<boolean>(false);
 
     const [expandedIssueId, setExpandedIssueId] = React.useState<string | undefined>(undefined);
-    const detailRef = React.useRef<HTMLDivElement | undefined>(undefined);
 
     const applyIssues = React.useCallback(async (projectIdValue: string, assigneeIdValue: string, moduleIdValue: string, stateIdValue: string): Promise<void> => {
         setIssuesLoading(true);
@@ -311,71 +258,6 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
         }
     }, [stateId, states, statesLoading]);
 
-    // Resuelve las imágenes del detalle (a data URI) y, si fallan, muestra placeholder.
-    const expandedIssue = React.useMemo(
-        () => issues.find(item => item.id === expandedIssueId),
-        [issues, expandedIssueId]
-    );
-    const detailHtml = React.useMemo(
-        () => expandedIssue ? buildDetailHtml(expandedIssue, config) : '',
-        [expandedIssue, config]
-    );
-
-    React.useEffect(() => {
-        const container = detailRef.current;
-        if (!container || !expandedIssue) {
-            return;
-        }
-
-        let cancelled = false;
-        const replaceWithMissing = (img: HTMLImageElement, src: string): void => {
-            const wrapper = document.createElement('span');
-            wrapper.className = 'fokkus-backlog-img-missing';
-
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'fokkus-backlog-img-missing-button';
-            button.textContent = 'Abrir imagen en Plane';
-            button.addEventListener('click', event => {
-                event.preventDefault();
-                event.stopPropagation();
-                windowService.openNewWindow(src, { external: true });
-            });
-
-            wrapper.appendChild(button);
-            img.replaceWith(wrapper);
-        };
-
-        const images = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
-        images.forEach(img => {
-            const src = img.getAttribute(PLANE_SRC_ATTR) || '';
-            if (!/^https?:/i.test(src)) {
-                img.remove();
-                return;
-            }
-            planeServer.fetchImage(src)
-                .then(dataUri => {
-                    if (cancelled) {
-                        return;
-                    }
-                    if (dataUri) {
-                        img.setAttribute('src', dataUri);
-                    } else {
-                        replaceWithMissing(img, src);
-                    }
-                })
-                .catch(() => {
-                    if (!cancelled) {
-                        replaceWithMissing(img, src);
-                    }
-                });
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [detailHtml, expandedIssue, planeServer, windowService]);
-
     const handleSaveConfig = async (): Promise<void> => {
         setSaving(true);
         setSaveError(undefined);
@@ -439,19 +321,6 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
         setExpandedIssueId(prev => prev === id ? undefined : id);
     };
 
-    const handleDetailClick = (event: React.MouseEvent<HTMLDivElement>): void => {
-        const target = event.target as HTMLElement | undefined;
-        const anchor = target?.closest('a');
-        if (!anchor) {
-            return;
-        }
-        event.preventDefault();
-        const href = anchor.getAttribute('href');
-        if (href && /^(https?:|mailto:)/i.test(href)) {
-            windowService.openNewWindow(href, { external: true });
-        }
-    };
-
     const memberIdResolved = resolveMemberId(assigneeInput, members);
     const canApply = Boolean(projectId && memberIdResolved);
 
@@ -467,6 +336,16 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
             normalizeForSearch(issue.title).includes(query)
         );
     }, [issues, searchQuery]);
+
+    // Publica el estado actual del Backlog para el tablero Kanban.
+    React.useEffect(() => {
+        kanbanService.publish({
+            project: projects.find(project => project.id === projectId),
+            states,
+            issues: filteredIssues,
+            config
+        });
+    }, [kanbanService, projects, projectId, states, filteredIssues, config]);
 
     return (
         <div className='fokkus-backlog'>
@@ -607,11 +486,25 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
             <section className='fokkus-backlog-section'>
                 <div className='fokkus-backlog-section-header fokkus-backlog-section-header-static'>
                     <span>Issues</span>
-                    {issues.length > 0 && (
-                        <span className='fokkus-backlog-count'>
-                            {hasSearchQuery ? `${filteredIssues.length} / ${issues.length}` : issues.length}
-                        </span>
-                    )}
+                    <span className='fokkus-backlog-header-actions'>
+                        {issues.length > 0 && (
+                            <span className='fokkus-backlog-count'>
+                                {hasSearchQuery ? `${filteredIssues.length} / ${issues.length}` : issues.length}
+                            </span>
+                        )}
+                        <button
+                            type='button'
+                            className='fokkus-backlog-icon-button'
+                            title='Abrir Kanban'
+                            aria-label='Abrir Kanban'
+                            disabled={!projectId}
+                            onClick={() => {
+                                commandService.executeCommand(PLANE_KANBAN_OPEN_COMMAND_ID).catch(error => console.error('[fokkus-backlog] No se pudo abrir el Kanban', error));
+                            }}
+                        >
+                            <i className='fa fa-columns' />
+                        </button>
+                    </span>
                 </div>
                 <div className='fokkus-backlog-section-body fokkus-backlog-list'>
                     <input
@@ -644,22 +537,12 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
                                 <span className='fokkus-backlog-estimate'>{issue.estimate ? issue.estimate : '—'}</span>
                             </button>
                             {expandedIssueId === issue.id && (
-                                issue.descriptionHtml?.trim()
-                                    ? (
-                                        <div
-                                            ref={element => { detailRef.current = element ?? undefined; }}
-                                            className='fokkus-backlog-detail'
-                                            onClick={handleDetailClick}
-                                            // HTML de Plane ya sanitizado con DOMPurify en buildDetailHtml.
-                                            // eslint-disable-next-line react/no-danger
-                                            dangerouslySetInnerHTML={{ __html: detailHtml }}
-                                        />
-                                    )
-                                    : (
-                                        <div className='fokkus-backlog-detail fokkus-backlog-empty-description'>
-                                            Sin descripción
-                                        </div>
-                                    )
+                                <PlaneIssueDetail
+                                    issue={issue}
+                                    config={config}
+                                    planeServer={planeServer}
+                                    windowService={windowService}
+                                />
                             )}
                         </article>
                     ))}
@@ -681,6 +564,12 @@ export class PlaneBacklogWidget extends ReactWidget {
     @inject(WindowService)
     protected readonly windowService: WindowService;
 
+    @inject(PlaneKanbanService)
+    protected readonly kanbanService: PlaneKanbanService;
+
+    @inject(CommandService)
+    protected readonly commandService: CommandService;
+
     @postConstruct()
     protected init(): void {
         this.id = PlaneBacklogWidget.ID;
@@ -692,6 +581,11 @@ export class PlaneBacklogWidget extends ReactWidget {
     }
 
     protected render(): React.ReactNode {
-        return <PlaneBacklogApp planeServer={this.planeServer} windowService={this.windowService} />;
+        return <PlaneBacklogApp
+            planeServer={this.planeServer}
+            windowService={this.windowService}
+            kanbanService={this.kanbanService}
+            commandService={this.commandService}
+        />;
     }
 }

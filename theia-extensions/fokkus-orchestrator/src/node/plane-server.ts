@@ -230,6 +230,7 @@ export class PlaneServerImpl implements PlaneServer {
                 projectId: query.projectId,
                 code,
                 title,
+                ...(issue.state ? { stateId: issue.state } : {}),
                 ...(estimate !== undefined ? { estimate } : {}),
                 descriptionHtml: issue.description_html ?? '',
                 ...(sequenceId !== undefined ? { sequenceId } : {})

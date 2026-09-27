@@ -57,6 +57,7 @@ export interface PlaneIssue {
     estimate?: string;
     descriptionHtml: string;
     sequenceId?: number;
+    stateId?: string;
 }
 
 export interface PlaneIssueQuery {

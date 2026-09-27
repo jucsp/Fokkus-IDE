@@ -1601,6 +1601,24 @@
     gap: 14px;
 }
 
+.fokkus-help-section-title {
+    margin: 12px 0 8px;
+    font-size: 0.95em;
+    font-weight: 600;
+    color: var(--theia-foreground);
+}
+
+.fokkus-help-section-title:first-child {
+    margin-top: 0;
+}
+
+.fokkus-help-section-intro {
+    margin: 0 0 8px;
+    font-size: 0.85em;
+    color: var(--theia-descriptionForeground);
+    overflow-wrap: anywhere;
+}
+
 .fokkus-help-card {
     display: flex;
     flex-direction: column;

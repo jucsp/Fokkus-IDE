@@ -89,15 +89,15 @@ const PROVIDER_FIELDS_BY_TYPE: Record<DynamicProvider['type'], ProviderFieldTemp
         { key: 'model', label: 'Modelo', placeholder: 'claude-sonnet-5, gemini-2.5-pro, deepseek-chat, gpt-4o', type: 'text' }
     ],
     cli: [
-        { key: 'cliCommand', label: 'Comando CLI', placeholder: 'claude', type: 'text' }
+        { key: 'cliCommand', label: 'Comando CLI', placeholder: 'claude -p', type: 'text' }
     ]
 };
 
 const DEFAULT_PROVIDERS: DynamicProvider[] = [
     { id: 'deepseek-api', name: 'DeepSeek API', type: 'api', config: { apiKey: '', apiEndpoint: 'https://api.deepseek.com', model: 'deepseek-reasoner' } },
-    { id: 'claude-cli', name: 'Claude CLI', type: 'cli', config: { cliCommand: 'claude' } },
+    { id: 'claude-cli', name: 'Claude CLI', type: 'cli', config: { cliCommand: 'claude -p' } },
     { id: 'openai-api', name: 'OpenAI API', type: 'api', config: { apiKey: '', apiEndpoint: 'https://api.openai.com/v1', model: 'gpt-4o' } },
-    { id: 'ollama-local', name: 'Ollama Local', type: 'cli', config: { cliCommand: 'http://localhost:11434' } }
+    { id: 'ollama-local', name: 'Ollama Local', type: 'cli', config: { cliCommand: 'ollama run llama3.1' } }
 ];
 
 const DEFAULT_ROLES: DynamicRole[] = [
@@ -189,7 +189,7 @@ interface ProviderHelpGuide {
     baseUrl?: string;
     installUrl?: string;
     cliValue?: string;
-    models: string[];
+    models?: string[];
     note: string;
 }
 
@@ -227,12 +227,39 @@ const PROVIDER_HELP_GUIDES: ProviderHelpGuide[] = [
         note: 'Compatible con OpenAI.'
     },
     {
+        name: 'Antigravity (agy)',
+        type: 'cli',
+        cliValue: 'agy -p',
+        note: 'Modo no interactivo (-p). Fokkus agrega --dangerously-skip-permissions y --add-dir con la carpeta abierta.'
+    },
+    {
+        name: 'Claude Code',
+        type: 'cli',
+        installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
+        cliValue: 'claude -p --dangerously-skip-permissions',
+        note: 'Modo print (-p). El flag omite las confirmaciones para que pueda editar archivos y ejecutar comandos sin pedir permiso.'
+    },
+    {
+        name: 'Gemini CLI',
+        type: 'cli',
+        installUrl: 'https://github.com/google-gemini/gemini-cli',
+        cliValue: 'gemini --yolo -p',
+        note: '-p recibe el prompt (Fokkus lo agrega al final); --yolo aprueba las acciones automáticamente.'
+    },
+    {
+        name: 'OpenAI Codex CLI',
+        type: 'cli',
+        installUrl: 'https://github.com/openai/codex',
+        cliValue: 'codex exec --full-auto',
+        note: 'exec ejecuta una tarea sin interfaz interactiva; --full-auto permite editar archivos en la carpeta de trabajo.'
+    },
+    {
         name: 'Ollama (local)',
         type: 'cli',
         installUrl: 'https://ollama.com/download',
-        cliValue: 'http://localhost:11434',
-        models: ['llama3.1', 'qwen2.5-coder'],
-        note: 'Los modelos se descargan con: ollama pull <modelo>.'
+        cliValue: 'ollama run qwen2.5-coder',
+        models: ['qwen2.5-coder', 'llama3.1'],
+        note: 'Descarga el modelo antes con: ollama pull <modelo>. Solo responde texto: no edita archivos ni ejecuta comandos.'
     }
 ];
 
@@ -304,6 +331,77 @@ function ProvidersPanel({ providersState, onProvidersChange, windowService }: Pr
     const isFormOpen = editingId !== undefined;
     const fieldTemplates = PROVIDER_FIELDS_BY_TYPE[formType];
 
+    const renderGuide = (guide: ProviderHelpGuide): React.ReactElement => {
+        const useGuide = () => {
+            if (guide.type === 'api') {
+                startCreate({ name: guide.name, type: 'api', config: { apiKey: '', apiEndpoint: guide.baseUrl ?? '', model: guide.models?.[0] ?? '' } });
+            } else {
+                startCreate({ name: guide.name, type: 'cli', config: { cliCommand: guide.cliValue ?? '' } });
+            }
+            setHelpOpen(false);
+        };
+        return (
+            <article className='fokkus-help-card' key={guide.name}>
+                <div className='fokkus-help-card-header'>
+                    <span className='fokkus-help-name'>{guide.name}</span>
+                    <span className='fokkus-help-type'>{guide.type === 'api' ? 'API' : 'CLI'}</span>
+                </div>
+                {guide.type === 'api' ? (
+                    <>
+                        <div className='fokkus-help-row'>
+                            <span className='fokkus-help-label'>Clave</span>
+                            <a
+                                className='fokkus-help-link'
+                                href={guide.keyUrl}
+                                onClick={event => { event.preventDefault(); openExternal(guide.keyUrl ?? ''); }}
+                            >
+                                {guide.keyUrl}
+                            </a>
+                        </div>
+                        <div className='fokkus-help-row'>
+                            <span className='fokkus-help-label'>Base URL</span>
+                            <code className='fokkus-help-code'>{guide.baseUrl}</code>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        {guide.installUrl && (
+                            <div className='fokkus-help-row'>
+                                <span className='fokkus-help-label'>Instalación</span>
+                                <a
+                                    className='fokkus-help-link'
+                                    href={guide.installUrl}
+                                    onClick={event => { event.preventDefault(); openExternal(guide.installUrl ?? ''); }}
+                                >
+                                    {guide.installUrl}
+                                </a>
+                            </div>
+                        )}
+                        <div className='fokkus-help-row'>
+                            <span className='fokkus-help-label'>Comando CLI</span>
+                            <code className='fokkus-help-code'>{guide.cliValue}</code>
+                        </div>
+                    </>
+                )}
+                {guide.models && guide.models.length > 0 && (
+                    <div className='fokkus-help-row'>
+                        <span className='fokkus-help-label'>Modelos</span>
+                        <div className='fokkus-help-models'>
+                            {guide.models.map(model => (
+                                <code className='fokkus-help-code' key={model}>{model}</code>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <p className='fokkus-help-note'>{guide.note}</p>
+                <button type='button' className='fokkus-help-use-btn' onClick={useGuide}>
+                    <i className='fa fa-magic' />
+                    <span>Usar esta configuración</span>
+                </button>
+            </article>
+        );
+    };
+
     return (
         <>
             <header className='fokkus-orchestrator-header'>
@@ -323,68 +421,17 @@ function ProvidersPanel({ providersState, onProvidersChange, windowService }: Pr
 
             {helpOpen && (
                 <div className='fokkus-help-panel'>
+                    <h3 className='fokkus-help-section-title'>Proveedores vía API</h3>
                     <div className='fokkus-help-grid'>
-                        {PROVIDER_HELP_GUIDES.map(guide => (
-                            <article className='fokkus-help-card' key={guide.name}>
-                                <div className='fokkus-help-card-header'>
-                                    <span className='fokkus-help-name'>{guide.name}</span>
-                                    <span className='fokkus-help-type'>{guide.type === 'api' ? 'API' : 'CLI'}</span>
-                                </div>
-                                {guide.type === 'api' ? (
-                                    <>
-                                        <div className='fokkus-help-row'>
-                                            <span className='fokkus-help-label'>Clave</span>
-                                            <a
-                                                className='fokkus-help-link'
-                                                href={guide.keyUrl}
-                                                onClick={event => { event.preventDefault(); openExternal(guide.keyUrl ?? ''); }}
-                                            >
-                                                {guide.keyUrl}
-                                            </a>
-                                        </div>
-                                        <div className='fokkus-help-row'>
-                                            <span className='fokkus-help-label'>Base URL</span>
-                                            <code className='fokkus-help-code'>{guide.baseUrl}</code>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className='fokkus-help-row'>
-                                            <span className='fokkus-help-label'>Instalación</span>
-                                            <a
-                                                className='fokkus-help-link'
-                                                href={guide.installUrl}
-                                                onClick={event => { event.preventDefault(); openExternal(guide.installUrl ?? ''); }}
-                                            >
-                                                {guide.installUrl}
-                                            </a>
-                                        </div>
-                                        <div className='fokkus-help-row'>
-                                            <span className='fokkus-help-label'>Comando CLI</span>
-                                            <code className='fokkus-help-code'>{guide.cliValue}</code>
-                                        </div>
-                                    </>
-                                )}
-                                <div className='fokkus-help-row'>
-                                    <span className='fokkus-help-label'>Modelos</span>
-                                    <div className='fokkus-help-models'>
-                                        {guide.models.map(model => (
-                                            <code className='fokkus-help-code' key={model}>{model}</code>
-                                        ))}
-                                    </div>
-                                </div>
-                                <p className='fokkus-help-note'>{guide.note}</p>
-                                {guide.type === 'api' && (
-                                    <button type='button' className='fokkus-help-use-btn' onClick={() => {
-                                        startCreate({ name: guide.name, type: 'api', config: { apiKey: '', apiEndpoint: guide.baseUrl ?? '', model: guide.models[0] ?? '' } });
-                                        setHelpOpen(false);
-                                    }}>
-                                        <i className='fa fa-magic' />
-                                        <span>Usar esta configuración</span>
-                                    </button>
-                                )}
-                            </article>
-                        ))}
+                        {PROVIDER_HELP_GUIDES.filter(guide => guide.type === 'api').map(renderGuide)}
+                    </div>
+                    <h3 className='fokkus-help-section-title'>Agentes CLI locales</h3>
+                    <p className='fokkus-help-section-intro'>
+                        Fokkus ejecuta el comando en la carpeta abierta y agrega el prompt como último argumento.
+                        Si el CLI lo necesita en otra posición, usa el marcador {'{prompt}'}. El CLI debe estar instalado y en el PATH.
+                    </p>
+                    <div className='fokkus-help-grid'>
+                        {PROVIDER_HELP_GUIDES.filter(guide => guide.type === 'cli').map(renderGuide)}
                     </div>
                     <p className='fokkus-help-footnote'>Los nombres de modelos cambian con el tiempo; revisa la documentación oficial de cada proveedor.</p>
                     <p className='fokkus-help-warning'>

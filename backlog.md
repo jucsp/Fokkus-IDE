@@ -25,8 +25,10 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
 - [x] #18 Permitir configurar roles Product Owner de tipo API (eliminar restricción estricta de CLI).
   - _Fix v1.0.11:_ el backend ya no descarta al PO de tipo API: lo ejecuta contra un endpoint compatible con OpenAI (`POST {apiEndpoint}/chat/completions`, con `apiKey` y `model` del proveedor). Si falta el endpoint o el modelo, se avisa qué falta. El botón «Stop» también cancela la petición HTTP. Un PO vía API solo responde en el chat (planifica y delega): para que edite archivos y ejecute comandos sigue haciendo falta un agente CLI. La ayuda de Providers ya no dice que el PO debe ser CLI.
-- [ ] #17 Agregar ejemplos de configuraciones de agentes CLI en la sección de Ayuda de Providers.
-- [ ] #15 Abrir carpeta en el explorador al arrastrarla dentro del IDE (Drag and Drop).
+- [x] #17 Agregar ejemplos de configuraciones de agentes CLI en la sección de Ayuda de Providers.
+  - _Fix v1.0.12:_ la ayuda de Providers separa «Proveedores vía API» y «Agentes CLI locales», con el comando no interactivo exacto de Antigravity (`agy -p`), Claude Code (`claude -p --dangerously-skip-permissions`), Gemini CLI (`gemini --yolo -p`), Codex CLI (`codex exec --full-auto`) y Ollama (`ollama run <modelo>`). «Usar esta configuración» también rellena el formulario de los CLI. Se explica que el prompt va como último argumento o en `{prompt}`. Los proveedores por defecto «Claude CLI» y «Ollama Local» pasan a `claude -p` y `ollama run llama3.1` (antes `claude`, que abría una sesión interactiva, y `http://localhost:11434`, que no es un comando).
+- [x] #15 Abrir carpeta en el explorador al arrastrarla dentro del IDE (Drag and Drop).
+  - _Fix v1.0.12 (app de escritorio):_ al soltar una carpeta del sistema operativo en la ventana, si no hay carpeta abierta se abre en el explorador. Si ya hay una, se pregunta si se añade al workspace o se abre en esta ventana o en una nueva. Soltar archivos sigue abriéndolos en el editor. El árbol del explorador sigue copiando lo que se suelta encima, y el input del chat de IA lo sigue agregando como contexto.
 - [x] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
 - [x] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).

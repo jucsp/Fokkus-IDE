@@ -57,6 +57,11 @@ function resolveMemberId(label: string, members: PlaneMember[]): string | undefi
     return member?.id;
 }
 
+/** Normaliza para búsqueda local: minúsculas y sin tildes. */
+function normalizeForSearch(value: string): string {
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 /** Transforma `<image-component>` a `<img>` y sanitiza el HTML del detalle. */
 function buildDetailHtml(issue: PlaneIssue, config: PlaneConfigStatus | undefined): string {
     const rawHtml = (issue.descriptionHtml || '').trim();
@@ -131,6 +136,7 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
     const [issues, setIssues] = React.useState<PlaneIssue[]>([]);
     const [issuesLoading, setIssuesLoading] = React.useState<boolean>(false);
     const [issuesError, setIssuesError] = React.useState<string | undefined>(undefined);
+    const [searchQuery, setSearchQuery] = React.useState<string>('');
     const [modulesLoading, setModulesLoading] = React.useState<boolean>(false);
     const [states, setStates] = React.useState<PlaneState[]>([]);
     const [statesLoading, setStatesLoading] = React.useState<boolean>(false);
@@ -449,6 +455,19 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
     const memberIdResolved = resolveMemberId(assigneeInput, members);
     const canApply = Boolean(projectId && memberIdResolved);
 
+    // Filtro local (sin llamadas a la API) por código y título, sin distinguir mayúsculas ni tildes.
+    const hasSearchQuery = searchQuery.trim().length > 0;
+    const filteredIssues = React.useMemo(() => {
+        const query = normalizeForSearch(searchQuery);
+        if (!query) {
+            return issues;
+        }
+        return issues.filter(issue =>
+            normalizeForSearch(issue.code).includes(query) ||
+            normalizeForSearch(issue.title).includes(query)
+        );
+    }, [issues, searchQuery]);
+
     return (
         <div className='fokkus-backlog'>
             {/* Conexión */}
@@ -589,16 +608,30 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
                 <div className='fokkus-backlog-section-header fokkus-backlog-section-header-static'>
                     <span>Issues</span>
                     {issues.length > 0 && (
-                        <span className='fokkus-backlog-count'>{issues.length}</span>
+                        <span className='fokkus-backlog-count'>
+                            {hasSearchQuery ? `${filteredIssues.length} / ${issues.length}` : issues.length}
+                        </span>
                     )}
                 </div>
                 <div className='fokkus-backlog-section-body fokkus-backlog-list'>
+                    <input
+                        className='fokkus-backlog-input'
+                        type='search'
+                        value={searchQuery}
+                        onChange={event => setSearchQuery(event.target.value)}
+                        placeholder='Buscar por código o título…'
+                        disabled={issues.length === 0}
+                        aria-label='Buscar issues'
+                    />
                     {issuesLoading && <div className='fokkus-backlog-status'>Cargando issues…</div>}
                     {issuesError && <div className='fokkus-backlog-error'>{issuesError}</div>}
                     {!issuesLoading && !issuesError && issues.length === 0 && (
                         <div className='fokkus-backlog-status'>Sin issues para estos filtros</div>
                     )}
-                    {!issuesLoading && issues.map(issue => (
+                    {!issuesLoading && !issuesError && issues.length > 0 && filteredIssues.length === 0 && (
+                        <div className='fokkus-backlog-status'>Sin resultados para la búsqueda</div>
+                    )}
+                    {!issuesLoading && filteredIssues.map(issue => (
                         <article key={issue.id} className='fokkus-backlog-card'>
                             <button
                                 type='button'
@@ -606,7 +639,7 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
                                 onClick={() => handleToggleIssue(issue.id)}
                                 aria-expanded={expandedIssueId === issue.id}
                             >
-                                <span className='fokkus-backlog-code'>{issue.code}</span>
+                                {issue.code && <span className='fokkus-backlog-code'>{issue.code}</span>}
                                 <span className='fokkus-backlog-title'>{issue.title}</span>
                                 <span className='fokkus-backlog-estimate'>{issue.estimate ? issue.estimate : '—'}</span>
                             </button>

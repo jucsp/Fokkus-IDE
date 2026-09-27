@@ -77,36 +77,3 @@ export interface PlaneServer {
     /** Devuelve data URI (`data:<mime>;base64,...`) o undefined si no se pudo. Nunca escribe a disco. */
     fetchImage(url: string): Promise<string | undefined>;
 }
-
-// Admite segmentos múltiples (HU-MIC-04): con uno solo, `HU-MIC-04: X` se partía en `HU-MIC` / `04: X`.
-const ISSUE_CODE_RE = '[A-Za-z]+(?:-[A-Za-z0-9]+)+';
-
-/**
- * Separa el nombre de un issue en su código y su título.
- * Reconoce `[CODE] resto`, `CODE: resto` y `CODE - resto` (también con – o —); si no hay
- * prefijo, usa `fallbackCode` como código y el nombre completo como título.
- * Función pura (sin imports de node ni browser).
- */
-export function splitIssueName(name: string, fallbackCode: string): { code: string; title: string } {
-    const value = (name ?? '').trim();
-    if (!value) {
-        return { code: fallbackCode, title: '' };
-    }
-
-    const bracket = value.match(new RegExp(`^\\[(${ISSUE_CODE_RE})\\]\\s*(.*)$`));
-    if (bracket) {
-        return { code: bracket[1], title: bracket[2].trim() };
-    }
-
-    const colon = value.match(new RegExp(`^(${ISSUE_CODE_RE}):\\s*(.*)$`));
-    if (colon) {
-        return { code: colon[1], title: colon[2].trim() };
-    }
-
-    const dash = value.match(new RegExp(`^(${ISSUE_CODE_RE})\\s+[-–—]\\s+(.*)$`));
-    if (dash) {
-        return { code: dash[1], title: dash[2].trim() };
-    }
-
-    return { code: fallbackCode, title: value };
-}

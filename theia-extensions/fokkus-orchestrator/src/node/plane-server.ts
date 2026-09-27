@@ -20,8 +20,7 @@ import {
     PlaneModule,
     PlaneProject,
     PlaneServer,
-    PlaneState,
-    splitIssueName
+    PlaneState
 } from '../common/plane-protocol';
 
 const CONFIG_DIR = join(os.homedir(), '.fokkus');
@@ -216,8 +215,10 @@ export class PlaneServerImpl implements PlaneServer {
             }
 
             const sequenceId = typeof issue.sequence_id === 'number' ? issue.sequence_id : undefined;
-            const fallbackCode = `${identifier}-${sequenceId ?? ''}`;
-            const { code, title } = splitIssueName(issue.name ?? '', fallbackCode);
+            // Código oficial: {identifier}-{sequence_id}. Sin identifier o sin sequence_id
+            // no se arma un código roto (p. ej. `-27` o `MEL-`).
+            const code = identifier && sequenceId !== undefined ? `${identifier}-${sequenceId}` : '';
+            const title = (issue.name ?? '').trim();
 
             const estimateRaw = issue.estimate_point ?? issue.point;
             const estimate = (estimateRaw === null || estimateRaw === undefined || estimateRaw === '') // eslint-disable-line no-null/no-null
@@ -463,7 +464,7 @@ export class PlaneServerImpl implements PlaneServer {
                 this.cachedProjects = await this.listProjects();
                 identifier = this.cachedProjects.find(project => project.id === projectId)?.identifier;
             } catch {
-                // Sin identificador el código cae a `-<sequence_id>`; se reintenta en la próxima consulta.
+                // Sin identificador la tarjeta se muestra sin código; se reintenta en la próxima consulta.
             }
         }
         return identifier ?? '';

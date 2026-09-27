@@ -1,0 +1,300 @@
+/********************************************************************************
+ * Plane Backlog widget — styles (prefixed with fokkus-backlog-)
+ ********************************************************************************/
+
+.fokkus-backlog {
+    height: 100%;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    box-sizing: border-box;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+    background:
+        radial-gradient(120% 120% at 10% 0%, rgba(59, 130, 246, 0.08), transparent 55%),
+        var(--theia-editor-background);
+}
+
+.fokkus-backlog-section {
+    margin-bottom: 10px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+}
+
+.fokkus-backlog-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fokkus-backlog-section-header-static {
+    cursor: default;
+}
+
+.fokkus-backlog-section-header:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fokkus-backlog-section-chevron {
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.8rem;
+}
+
+.fokkus-backlog-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 12px 12px;
+}
+
+.fokkus-backlog-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.fokkus-backlog-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+}
+
+.fokkus-backlog-input {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 7px;
+    background: var(--theia-input-background, rgba(0, 0, 0, 0.2));
+    color: var(--theia-input-foreground, var(--theia-foreground));
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.fokkus-backlog-input:focus {
+    border-color: var(--fokkus-accent, #3b82f6);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--fokkus-accent, #3b82f6) 25%, transparent);
+}
+
+.fokkus-backlog-input::placeholder {
+    color: var(--theia-input-placeholderForeground, #8a8aa0);
+}
+
+.fokkus-backlog-apply {
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: linear-gradient(135deg, var(--fokkus-accent, #3b82f6), color-mix(in srgb, var(--fokkus-accent, #3b82f6) 60%, #38bdf8));
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.fokkus-backlog-apply:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.fokkus-backlog-error {
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-backlog-success {
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #86efac;
+    font-size: 0.78rem;
+}
+
+.fokkus-backlog-list {
+    gap: 6px;
+}
+
+.fokkus-backlog-status {
+    padding: 10px 12px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.8rem;
+}
+
+.fokkus-backlog-count {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--fokkus-accent, #3b82f6) 20%, transparent);
+    color: var(--fokkus-accent, #3b82f6);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.fokkus-backlog-card {
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+}
+
+/* Código y estimación en la primera fila; el título ocupa todo el ancho debajo para no quedar
+   aplastado en el panel lateral estrecho. */
+.fokkus-backlog-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        'code estimate'
+        'title title';
+    align-items: center;
+    gap: 6px 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fokkus-backlog-card-header:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fokkus-backlog-code {
+    grid-area: code;
+    justify-self: start;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--fokkus-accent, #3b82f6) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--fokkus-accent, #3b82f6) 35%, transparent);
+    color: var(--fokkus-accent, #3b82f6);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.fokkus-backlog-title {
+    grid-area: title;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-backlog-estimate {
+    grid-area: estimate;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.fokkus-backlog-detail {
+    min-width: 0;
+    padding: 10px;
+    border-top: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    color: var(--theia-foreground);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-backlog-detail a {
+    color: var(--fokkus-accent, #3b82f6);
+    text-decoration: none;
+}
+
+.fokkus-backlog-detail a:hover {
+    text-decoration: underline;
+}
+
+.fokkus-backlog-detail img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+}
+
+.fokkus-backlog-detail table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+}
+
+.fokkus-backlog-detail th,
+.fokkus-backlog-detail td {
+    padding: 6px 8px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    overflow-wrap: anywhere;
+}
+
+.fokkus-backlog-detail code {
+    font-family: var(--theia-code-font-family, monospace);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+
+.fokkus-backlog-detail pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25);
+}
+
+.fokkus-backlog-empty-description {
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-style: italic;
+}
+
+.fokkus-backlog-img-missing {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px;
+    border: 1px dashed var(--theia-border-color0, rgba(255, 255, 255, 0.15));
+    border-radius: 6px;
+}
+
+.fokkus-backlog-img-missing-button {
+    padding: 5px 10px;
+    border: 1px solid var(--fokkus-accent, #3b82f6);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--fokkus-accent, #3b82f6) 15%, transparent);
+    color: var(--fokkus-accent, #3b82f6);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.75rem;
+    cursor: pointer;
+}

@@ -9,12 +9,16 @@
 
 import '../../src/browser/style/index.css';
 import '../../src/browser/style/theme.css';
+import '../../src/browser/style/plane-backlog.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
+import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contribution';
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
+import { PlaneBacklogContribution } from './plane-backlog-contribution';
+import { PlaneBacklogWidget } from './plane-backlog-widget';
 
 export default new ContainerModule(bind => {
     // bindViewContribution already binds MenuContribution (and CommandContribution/KeybindingContribution)
@@ -38,5 +42,19 @@ export default new ContainerModule(bind => {
     bind(FokkusOrchestratorServer).toDynamicValue(context => {
         const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
         return provider.createProxy<FokkusOrchestratorServer>(FokkusOrchestratorServerPath);
+    }).inSingletonScope();
+
+    bindViewContribution(bind, PlaneBacklogContribution);
+    bind(FrontendApplicationContribution).toService(PlaneBacklogContribution);
+
+    bind(PlaneBacklogWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: PlaneBacklogWidget.ID,
+        createWidget: () => context.container.get<PlaneBacklogWidget>(PlaneBacklogWidget)
+    })).inSingletonScope();
+
+    bind(PlaneServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<PlaneServer>(PlaneServerPath);
     }).inSingletonScope();
 });

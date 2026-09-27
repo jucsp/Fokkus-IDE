@@ -24,8 +24,11 @@ export function buildDevelopPrompt(issue: PlaneIssue): string {
     // Sin punto final: la plantilla ya agrega uno (evita «1 clic..»).
     const description = issueDescriptionToText(issue.descriptionHtml).replace(/\.+$/, '') || 'Sin descripción';
     const head = issue.code ? `${issue.code} - ${issue.title}` : issue.title;
-    return `Desarrolla la siguiente Historia de Usuario: ${head}. Descripción: ${description}. `
-        + 'Recuerda utilizar el Swarm y tus agentes designados (Claude/Deepseek) para ejecutar el desarrollo.';
+    return `Desarrolla la siguiente Historia de Usuario: ${head}. Descripción: ${description}.\n\n`
+        + `INSTRUCCIÓN CRÍTICA: Debes desarrollar esta historia trabajando sí o sí con todo el resto del equipo del IDE (Swarm). `
+        + `Asegúrate de delegar las tareas (a Claude y Deepseek V4 Pro según corresponda), respetar sus prompts y roles, `
+        + `realizar pruebas de QA exhaustivas, y coordinar todo para asegurar que el trabajo se distribuya por todo el equipo `
+        + `y se cumplan exitosamente todas las etapas del desarrollo.`;
 }
 
 interface KanbanColumn {

@@ -18,7 +18,8 @@ import {
     PlaneMember,
     PlaneModule,
     PlaneProject,
-    PlaneServer
+    PlaneServer,
+    PlaneState
 } from '../common/plane-protocol';
 
 export const PLANE_BACKLOG_WIDGET_ID = 'fokkus-backlog-widget';
@@ -125,23 +126,27 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
     const [assigneeInput, setAssigneeInput] = React.useState<string>('');
     const [projectId, setProjectId] = React.useState<string>('');
     const [moduleId, setModuleId] = React.useState<string>('');
+    const [stateId, setStateId] = React.useState<string>('');
 
     const [issues, setIssues] = React.useState<PlaneIssue[]>([]);
     const [issuesLoading, setIssuesLoading] = React.useState<boolean>(false);
     const [issuesError, setIssuesError] = React.useState<string | undefined>(undefined);
     const [modulesLoading, setModulesLoading] = React.useState<boolean>(false);
+    const [states, setStates] = React.useState<PlaneState[]>([]);
+    const [statesLoading, setStatesLoading] = React.useState<boolean>(false);
 
     const [expandedIssueId, setExpandedIssueId] = React.useState<string | undefined>(undefined);
     const detailRef = React.useRef<HTMLDivElement | undefined>(undefined);
 
-    const applyIssues = React.useCallback(async (projectIdValue: string, assigneeIdValue: string, moduleIdValue: string): Promise<void> => {
+    const applyIssues = React.useCallback(async (projectIdValue: string, assigneeIdValue: string, moduleIdValue: string, stateIdValue: string): Promise<void> => {
         setIssuesLoading(true);
         setIssuesError(undefined);
         try {
             const result = await planeServer.listIssues({
                 projectId: projectIdValue,
                 assigneeId: assigneeIdValue,
-                moduleId: moduleIdValue || undefined
+                moduleId: moduleIdValue || undefined,
+                stateId: stateIdValue || undefined
             });
             setIssues(result);
             setExpandedIssueId(undefined);
@@ -192,19 +197,21 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
                 const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
                 if (saved) {
                     try {
-                        const parsed = JSON.parse(saved) as { assigneeLabel?: string; projectId?: string; moduleId?: string };
+                        const parsed = JSON.parse(saved) as { assigneeLabel?: string; projectId?: string; moduleId?: string; stateId?: string };
                         const savedAssignee = typeof parsed.assigneeLabel === 'string' ? parsed.assigneeLabel : '';
                         const savedProject = typeof parsed.projectId === 'string' ? parsed.projectId : '';
                         const savedModule = typeof parsed.moduleId === 'string' ? parsed.moduleId : '';
+                        const savedState = typeof parsed.stateId === 'string' ? parsed.stateId : '';
 
                         setAssigneeInput(savedAssignee);
                         setProjectId(savedProject);
                         setModuleId(savedModule);
+                        setStateId(savedState);
 
                         if (savedAssignee && savedProject) {
                             const memberId = resolveMemberId(savedAssignee, membersList);
                             if (memberId) {
-                                await applyIssues(savedProject, memberId, savedModule);
+                                await applyIssues(savedProject, memberId, savedModule, savedState);
                             }
                         }
                     } catch {
@@ -254,6 +261,49 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
             cancelled = true;
         };
     }, [projectId, planeServer]);
+
+    // Recarga los estados cuando cambia el proyecto.
+    React.useEffect(() => {
+        if (!projectId) {
+            setStates([]);
+            return;
+        }
+
+        let cancelled = false;
+        setStatesLoading(true);
+        planeServer.listStates(projectId)
+            .then(list => {
+                if (!cancelled) {
+                    setStates(list);
+                }
+            })
+            .catch(error => {
+                if (!cancelled) {
+                    setStates([]);
+                }
+                console.error('[fokkus-backlog] No se pudieron cargar los estados', error);
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setStatesLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId, planeServer]);
+
+    // Si el estado restaurado ya no existe en el proyecto, se limpia (solo con la lista ya cargada,
+    // para no borrar el estado guardado mientras se descarga).
+    React.useEffect(() => {
+        if (statesLoading) {
+            return;
+        }
+        if (stateId && states.length > 0 && !states.some(state => state.id === stateId)) {
+            setStateId('');
+        }
+    }, [stateId, states, statesLoading]);
 
     // Resuelve las imágenes del detalle (a data URI) y, si fallan, muestra placeholder.
     const expandedIssue = React.useMemo(
@@ -361,6 +411,7 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
     const handleProjectChange = (value: string): void => {
         setProjectId(value);
         setModuleId('');
+        setStateId('');
     };
 
     const handleApplyFilters = async (): Promise<void> => {
@@ -372,9 +423,10 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
         localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({
             assigneeLabel: assigneeInput,
             projectId,
-            moduleId
+            moduleId,
+            stateId
         }));
-        await applyIssues(projectId, memberId, moduleId);
+        await applyIssues(projectId, memberId, moduleId, stateId);
     };
 
     const handleToggleIssue = (id: string): void => {
@@ -503,6 +555,20 @@ function PlaneBacklogApp({ planeServer, windowService }: PlaneBacklogAppProps): 
                             <option value=''>Todos los módulos</option>
                             {modules.map(module => (
                                 <option key={module.id} value={module.id}>{module.name}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className='fokkus-backlog-field'>
+                        <span className='fokkus-backlog-label'>Estado</span>
+                        <select
+                            className='fokkus-backlog-input'
+                            value={stateId}
+                            onChange={event => setStateId(event.target.value)}
+                            disabled={!projectId || statesLoading}
+                        >
+                            <option value=''>Todos los estados</option>
+                            {states.map(state => (
+                                <option key={state.id} value={state.id}>{state.name}</option>
                             ))}
                         </select>
                     </label>

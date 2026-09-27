@@ -20,6 +20,7 @@ import {
     PlaneModule,
     PlaneProject,
     PlaneServer,
+    PlaneState,
     splitIssueName
 } from '../common/plane-protocol';
 
@@ -68,6 +69,14 @@ interface PlaneApiModule {
     status?: string;
 }
 
+interface PlaneApiState {
+    id: string;
+    name?: string;
+    group?: string;
+    color?: string;
+    sequence?: number;
+}
+
 interface PlaneApiIssue {
     id: string;
     name?: string;
@@ -76,6 +85,7 @@ interface PlaneApiIssue {
     point?: number | null;
     assignees?: string[];
     sequence_id?: number;
+    state?: string;
     archived_at?: string | null;
     deleted_at?: string | null;
 }
@@ -149,9 +159,38 @@ export class PlaneServerImpl implements PlaneServer {
         }));
     }
 
+    async listStates(projectId: string): Promise<PlaneState[]> {
+        this.assertUuid(projectId, 'proyecto');
+        const raw = await this.getAllPages<PlaneApiState>(`projects/${projectId}/states/`);
+        const withSequence = raw.map(state => ({
+            id: state.id,
+            name: state.name ?? '',
+            group: state.group ?? '',
+            color: state.color ?? '',
+            sequence: typeof state.sequence === 'number' ? state.sequence : undefined
+        }));
+        // Plane envía `sequence`; si viene, se ordena por él. Sin sequence se conserva el orden original.
+        const hasSequence = withSequence.some(state => state.sequence !== undefined);
+        if (hasSequence) {
+            withSequence.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+        }
+        return withSequence.map(state => ({
+            id: state.id,
+            name: state.name,
+            ...(state.group ? { group: state.group } : {}),
+            ...(state.color ? { color: state.color } : {})
+        }));
+    }
+
     async listIssues(query: PlaneIssueQuery): Promise<PlaneIssue[]> {
         this.assertUuid(query.projectId, 'proyecto');
         this.assertUuid(query.assigneeId, 'usuario');
+
+        const extraQuery: Record<string, string> = {};
+        if (query.stateId) {
+            this.assertUuid(query.stateId, 'estado');
+            extraQuery.state = query.stateId;
+        }
 
         let path: string;
         if (query.moduleId) {
@@ -161,7 +200,7 @@ export class PlaneServerImpl implements PlaneServer {
             path = `projects/${query.projectId}/issues/`;
         }
 
-        const raw = await this.getAllPages<PlaneApiIssue>(path);
+        const raw = await this.getAllPages<PlaneApiIssue>(path, extraQuery);
         const identifier = await this.getProjectIdentifier(query.projectId);
 
         const issues: PlaneIssue[] = [];
@@ -170,6 +209,9 @@ export class PlaneServerImpl implements PlaneServer {
                 continue;
             }
             if (!Array.isArray(issue.assignees) || !issue.assignees.includes(query.assigneeId)) {
+                continue;
+            }
+            if (query.stateId && issue.state !== query.stateId) {
                 continue;
             }
 
@@ -357,17 +399,26 @@ export class PlaneServerImpl implements PlaneServer {
         }
     }
 
-    private async getAllPages<T>(path: string): Promise<T[]> {
-        const cached = this.pagesCache.get(path);
+    private async getAllPages<T>(path: string, extraQuery?: Record<string, string>): Promise<T[]> {
+        const cacheKey = this.buildCacheKey(path, extraQuery);
+        const cached = this.pagesCache.get(cacheKey);
         if (cached && cached.expires > Date.now()) {
             return cached.items as T[];
         }
-        const items = await this.fetchAllPages<T>(path);
-        this.pagesCache.set(path, { expires: Date.now() + PAGES_CACHE_TTL_MS, items });
+        const items = await this.fetchAllPages<T>(path, extraQuery);
+        this.pagesCache.set(cacheKey, { expires: Date.now() + PAGES_CACHE_TTL_MS, items });
         return items;
     }
 
-    private async fetchAllPages<T>(path: string): Promise<T[]> {
+    private buildCacheKey(path: string, extraQuery?: Record<string, string>): string {
+        if (!extraQuery || Object.keys(extraQuery).length === 0) {
+            return path;
+        }
+        const sorted = Object.keys(extraQuery).sort().map(key => `${key}=${extraQuery[key]}`).join('&');
+        return `${path}?${sorted}`;
+    }
+
+    private async fetchAllPages<T>(path: string, extraQuery?: Record<string, string>): Promise<T[]> {
         const items: T[] = [];
         let cursor: string | undefined;
         let pages = 0;
@@ -378,7 +429,7 @@ export class PlaneServerImpl implements PlaneServer {
                 break;
             }
 
-            const query: Record<string, string> = { per_page: '100' };
+            const query: Record<string, string> = { per_page: '100', ...(extraQuery ?? {}) };
             if (cursor) {
                 query.cursor = cursor;
             }

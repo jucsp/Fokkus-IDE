@@ -42,6 +42,13 @@ export interface PlaneModule {
     status?: string;
 }
 
+export interface PlaneState {
+    id: string;
+    name: string;
+    group?: string;
+    color?: string;
+}
+
 export interface PlaneIssue {
     id: string;
     projectId: string;
@@ -56,6 +63,7 @@ export interface PlaneIssueQuery {
     projectId: string;
     assigneeId: string;
     moduleId?: string;
+    stateId?: string;
 }
 
 export interface PlaneServer {
@@ -64,6 +72,7 @@ export interface PlaneServer {
     listMembers(): Promise<PlaneMember[]>;
     listProjects(): Promise<PlaneProject[]>;
     listModules(projectId: string): Promise<PlaneModule[]>;
+    listStates(projectId: string): Promise<PlaneState[]>;
     listIssues(query: PlaneIssueQuery): Promise<PlaneIssue[]>;
     /** Devuelve data URI (`data:<mime>;base64,...`) o undefined si no se pudo. Nunca escribe a disco. */
     fetchImage(url: string): Promise<string | undefined>;

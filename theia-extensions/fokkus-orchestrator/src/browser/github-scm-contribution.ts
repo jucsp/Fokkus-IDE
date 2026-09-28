@@ -29,18 +29,14 @@ export class GitHubScmContribution implements FrontendApplicationContribution {
     @inject(WidgetManager)
     protected readonly widgetManager: WidgetManager;
 
-    onStart(app: FrontendApplication): void {
-        this.widgetManager.onDidCreateWidget(({ factoryId, widget }) => {
-            if (factoryId === SCM_VIEW_CONTAINER_FACTORY_ID && widget instanceof ViewContainer) {
-                this.addPullRequests(widget)
-                    .catch(error => console.error('[fokkus-github] No se pudo agregar Pull Requests a Source Control', error));
+    async onStart(app: FrontendApplication): Promise<void> {
+        try {
+            const scm = await this.widgetManager.getWidget<ViewContainer>(SCM_VIEW_CONTAINER_FACTORY_ID);
+            if (scm) {
+                await this.addPullRequests(scm);
             }
-        });
-
-        const existing = this.widgetManager.tryGetWidget(SCM_VIEW_CONTAINER_FACTORY_ID);
-        if (existing instanceof ViewContainer) {
-            this.addPullRequests(existing)
-                .catch(error => console.error('[fokkus-github] No se pudo agregar Pull Requests a Source Control', error));
+        } catch (error) {
+            console.error('[fokkus-github] No se pudo agregar Pull Requests a Source Control', error);
         }
     }
 

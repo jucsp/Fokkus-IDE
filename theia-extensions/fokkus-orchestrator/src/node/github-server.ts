@@ -42,6 +42,10 @@ const CACHE_TTL_MS = 30000;
 const DEFAULT_MAX_PAGES = 10;
 const REPOS_MAX_PAGES = 3;
 const FILES_MAX_PAGES = 3;
+/** Tope de repositorios a consultar en la vista global de PRs abiertos. */
+const ALL_REPOS_MAX = 100;
+/** Número máximo de repositorios consultados en paralelo en la vista global. */
+const ALL_REPOS_CONCURRENCY = 6;
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const PROJECT_ID_RE = /^[A-Za-z0-9_=-]+$/;
 const GRAPHQL_MUTATION_RE = /\bmutation\b/i;
@@ -356,19 +360,30 @@ export class GitHubServerImpl implements GitHubServer {
         this.assertRepo(repo);
         this.assertState(state);
         const raw = await this.fetchAllPages<GitHubApiPull>(`/repos/${repo}/pulls`, { state, sort: 'updated', direction: 'desc' });
-        return raw.map(pr => ({
-            number: pr.number,
-            title: pr.title ?? '',
-            state: pr.merged_at ? 'merged' : (pr.state === 'closed' ? 'closed' : 'open'),
-            draft: !!pr.draft,
-            author: pr.user?.login ?? '',
-            headRef: pr.head?.ref ?? '',
-            baseRef: pr.base?.ref ?? '',
-            htmlUrl: pr.html_url ?? '',
-            bodyHtml: pr.body_html ?? '',
-            createdAt: pr.created_at ?? '',
-            updatedAt: pr.updated_at ?? ''
-        }));
+        return raw.map(pr => this.mapPull(pr, repo));
+    }
+
+    async listOpenPullRequestsAllRepos(): Promise<GitHubPullRequest[]> {
+        const repos = await this.listRepositories();
+        const scoped = repos.slice(0, ALL_REPOS_MAX);
+
+        const batches = await this.runPool(scoped, async repo => {
+            try {
+                const raw = await this.fetchAllPages<GitHubApiPull>(
+                    `/repos/${repo.fullName}/pulls`,
+                    { state: 'open', sort: 'updated', direction: 'desc' },
+                    1
+                );
+                return raw.map(pr => this.mapPull(pr, repo.fullName));
+            } catch {
+                // Un repo que falle (404/403/limitado) se ignora y no tumba el resto.
+                return [];
+            }
+        }, ALL_REPOS_CONCURRENCY);
+
+        const all = batches.flat();
+        all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+        return all;
     }
 
     async listPullRequestFiles(repo: string, pullNumber: number): Promise<GitHubPullRequestFile[]> {
@@ -402,6 +417,37 @@ export class GitHubServerImpl implements GitHubServer {
             updatedAt: item.updated_at ?? '',
             columnId
         };
+    }
+
+    private mapPull(pr: GitHubApiPull, repo: string): GitHubPullRequest {
+        return {
+            number: pr.number,
+            repo,
+            title: pr.title ?? '',
+            state: pr.merged_at ? 'merged' : (pr.state === 'closed' ? 'closed' : 'open'),
+            draft: !!pr.draft,
+            author: pr.user?.login ?? '',
+            headRef: pr.head?.ref ?? '',
+            baseRef: pr.base?.ref ?? '',
+            htmlUrl: pr.html_url ?? '',
+            bodyHtml: pr.body_html ?? '',
+            createdAt: pr.created_at ?? '',
+            updatedAt: pr.updated_at ?? ''
+        };
+    }
+
+    /** Ejecuta `worker` sobre `items` limitando a `concurrency` promesas simultáneas, sin dependencias. */
+    private async runPool<T, R>(items: T[], worker: (item: T) => Promise<R>, concurrency: number): Promise<R[]> {
+        const results = new Array<R>(items.length);
+        let nextIndex = 0;
+        const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+            while (nextIndex < items.length) {
+                const index = nextIndex++;
+                results[index] = await worker(items[index]);
+            }
+        });
+        await Promise.all(workers);
+        return results;
     }
 
     private async fetchProjectColumns(projectId: string): Promise<{ columns: GitHubColumn[]; items: Map<string, string | undefined> }> {

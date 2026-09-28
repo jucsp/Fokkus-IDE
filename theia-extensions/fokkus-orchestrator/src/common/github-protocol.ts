@@ -55,6 +55,8 @@ export interface GitHubIssueQuery {
 export interface GitHubIssueResult { columns: GitHubColumn[]; issues: GitHubIssue[]; }
 export interface GitHubPullRequest {
     number: number;
+    /** Repositorio del PR en formato owner/name. */
+    repo: string;
     title: string;
     state: 'open' | 'closed' | 'merged';
     draft: boolean;
@@ -79,5 +81,7 @@ export interface GitHubServer {
     listProjects(repo: string): Promise<GitHubProject[]>;
     listIssues(query: GitHubIssueQuery): Promise<GitHubIssueResult>;
     listPullRequests(repo: string, state: 'open' | 'closed' | 'all'): Promise<GitHubPullRequest[]>;
+    /** PRs abiertos de todos los repositorios accesibles (hasta ALL_REPOS_MAX), ordenados por updatedAt desc. */
+    listOpenPullRequestsAllRepos(): Promise<GitHubPullRequest[]>;
     listPullRequestFiles(repo: string, pullNumber: number): Promise<GitHubPullRequestFile[]>;
 }

@@ -17,6 +17,7 @@ import {
     GitHubConfigStatus,
     GitHubPullRequest,
     GitHubPullRequestFile,
+    GitHubRepo,
     GitHubServer
 } from '../common/github-protocol';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
@@ -29,8 +30,20 @@ const GITHUB_PANEL_TOGGLE_COMMAND_ID = 'fokkus-github:toggle';
 
 const REPO_OVERRIDE_KEY = 'fokkus.github.prs.repo';
 
+/**
+ * Valor centinela persistido para distinguir "todos los repositorios elegido por el
+ * usuario" de "sin preferencia guardada". Ambos se traducen a filtro vacío (global),
+ * pero solo el centinela se escribe en localStorage.
+ */
+const ALL_REPOS_SENTINEL = '__all__';
+
 function storageKey(workspaceUri: string): string {
     return `${REPO_OVERRIDE_KEY}:${workspaceUri}`;
+}
+
+/** Clave estable de una tarjeta de PR: los números se repiten entre repos. */
+function prKey(pr: GitHubPullRequest): string {
+    return `${pr.repo}#${pr.number}`;
 }
 
 /** Normaliza para búsqueda local: minúsculas y sin tildes. */
@@ -102,12 +115,13 @@ export function buildPullRequestReviewPrompt(repo: string, pr: GitHubPullRequest
         + `Autor: ${pr.author}. Rama: ${pr.headRef} → ${pr.baseRef}. Estado: ${stateLabel}. URL: ${pr.htmlUrl}\n`
         + `Descripción: ${description}\n`
         + `Archivos modificados (${files.length}):\n${fileList}\n\n`
-        + `INSTRUCCIÓN: Obtén el diff completo del PR (por ejemplo \`git fetch origin pull/${pr.number}/head:fokkus-pr-${pr.number}\` `
-        + `y \`git diff origin/${pr.baseRef}...fokkus-pr-${pr.number}\`) y realiza un code review exhaustivo: `
+        + 'INSTRUCCIÓN: Obtén el diff completo del PR (por ejemplo '
+        + `\`git fetch https://github.com/${repo}.git +refs/heads/${pr.baseRef}:refs/fokkus/pr-${pr.number}-base +refs/pull/${pr.number}/head:refs/fokkus/pr-${pr.number}\` `
+        + `y \`git diff refs/fokkus/pr-${pr.number}-base...refs/fokkus/pr-${pr.number}\`) y realiza un code review exhaustivo: `
         + 'bugs y errores de lógica, seguridad, rendimiento, legibilidad y cobertura de pruebas. Entrega: '
         + '1) resumen del cambio, 2) hallazgos ordenados por severidad con archivo:línea y sugerencia concreta, '
-        + '3) veredicto final (Aprobar / Solicitar cambios). No modifiques archivos, no hagas commits '
-        + 'ni publiques comentarios en GitHub: entrega el feedback solo en este chat.';
+        + '3) resumen de riesgos y recomendaciones. NO apruebes ni rechaces el PR: tu rol es solo revisar y dar feedback. '
+        + 'No modifiques archivos, no hagas commits ni publiques comentarios en GitHub: entrega el feedback solo en este chat.';
 }
 
 interface GitHubPullRequestsAppProps {
@@ -121,8 +135,8 @@ interface GitHubPullRequestsAppProps {
 function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, dispatcher, commandService }: GitHubPullRequestsAppProps): React.ReactElement {
     const [config, setConfig] = React.useState<GitHubConfigStatus | undefined>(undefined);
     const [workspaceUri, setWorkspaceUri] = React.useState<string>('');
-    const [repo, setRepo] = React.useState<string>('');
-    const [repoInput, setRepoInput] = React.useState<string>('');
+    const [repositories, setRepositories] = React.useState<GitHubRepo[]>([]);
+    const [repoFilter, setRepoFilter] = React.useState<string>('');
     const [detecting, setDetecting] = React.useState<boolean>(false);
     const [repoError, setRepoError] = React.useState<string | undefined>(undefined);
     const [stateFilter, setStateFilter] = React.useState<'open' | 'closed' | 'all'>('open');
@@ -131,47 +145,28 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
     const [error, setError] = React.useState<string | undefined>(undefined);
     const [reloadToken, setReloadToken] = React.useState<number>(0);
     const [searchQuery, setSearchQuery] = React.useState<string>('');
-    const [expandedNumber, setExpandedNumber] = React.useState<number | undefined>(undefined);
-    const [filesByPr, setFilesByPr] = React.useState<Record<number, GitHubPullRequestFile[]>>({});
-    const [filesLoadingNumber, setFilesLoadingNumber] = React.useState<number | undefined>(undefined);
+    const [expandedKey, setExpandedKey] = React.useState<string | undefined>(undefined);
+    const [filesByPr, setFilesByPr] = React.useState<Record<string, GitHubPullRequestFile[]>>({});
+    const [filesLoadingKey, setFilesLoadingKey] = React.useState<string | undefined>(undefined);
     const [filesError, setFilesError] = React.useState<string | undefined>(undefined);
     const [reviewError, setReviewError] = React.useState<string | undefined>(undefined);
-    const [reviewingNumber, setReviewingNumber] = React.useState<number | undefined>(undefined);
+    const [reviewingKey, setReviewingKey] = React.useState<string | undefined>(undefined);
 
-    const refreshRepo = React.useCallback(async (forceDetect: boolean): Promise<void> => {
+    const hasToken = config?.hasToken === true;
+
+    // Lee la preferencia de filtro guardada para el workspace actual.
+    // Sin preferencia guardada el default es TODOS (no el repo detectado).
+    const loadWorkspacePreference = React.useCallback(async (): Promise<void> => {
         await workspaceService.ready;
         const uri = workspaceService.workspace?.resource.toString() ?? 'no-workspace';
         setWorkspaceUri(uri);
-        const key = storageKey(uri);
-        if (forceDetect) {
-            localStorage.removeItem(key);
+        const saved = localStorage.getItem(storageKey(uri)) ?? undefined;
+        if (!saved || saved === ALL_REPOS_SENTINEL) {
+            setRepoFilter('');
         } else {
-            const override = localStorage.getItem(key);
-            if (override) {
-                setRepo(override);
-                setRepoInput(override);
-                return;
-            }
+            setRepoFilter(saved);
         }
-        setDetecting(true);
-        setRepoError(undefined);
-        try {
-            const roots = await workspaceService.roots;
-            const root = roots[0];
-            const detected = root ? await githubServer.detectRepository(root.resource.toString()) : undefined;
-            setRepo(detected ?? '');
-            setRepoInput(detected ?? '');
-            if (!detected) {
-                setRepoError('No se detectó un repositorio de GitHub en la carpeta abierta.');
-            }
-        } catch (err) {
-            setRepoError(err instanceof Error ? err.message : String(err));
-            setRepo('');
-            setRepoInput('');
-        } finally {
-            setDetecting(false);
-        }
-    }, [githubServer, workspaceService]);
+    }, [workspaceService]);
 
     // Carga la configuración una sola vez.
     React.useEffect(() => {
@@ -192,22 +187,46 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
         };
     }, [githubServer]);
 
-    // Detección inicial del repositorio.
+    // Preferencia inicial del workspace.
     React.useEffect(() => {
-        refreshRepo(false).catch(err => console.error('[fokkus-github-pr] No se pudo detectar el repositorio', err));
-    }, [refreshRepo]);
+        loadWorkspacePreference().catch(err => console.error('[fokkus-github-pr] No se pudo cargar la preferencia de workspace', err));
+    }, [loadWorkspacePreference]);
 
-    // Vuelve a detectar cuando cambia la raíz del workspace.
+    // Vuelve a leer la preferencia cuando cambia la raíz del workspace.
     React.useEffect(() => {
         const disposable = workspaceService.onWorkspaceChanged(() => {
-            refreshRepo(false).catch(err => console.error('[fokkus-github-pr] No se pudo detectar el repositorio', err));
+            loadWorkspacePreference().catch(err => console.error('[fokkus-github-pr] No se pudo cargar la preferencia de workspace', err));
         });
         return () => disposable.dispose();
-    }, [workspaceService, refreshRepo]);
+    }, [workspaceService, loadWorkspacePreference]);
 
-    // Recarga los PR cuando cambian el repositorio, el filtro de estado o se fuerza refresco.
+    // Carga la lista de repositorios accesibles para el filtro.
     React.useEffect(() => {
-        if (!repo) {
+        if (!hasToken) {
+            setRepositories([]);
+            return;
+        }
+        let cancelled = false;
+        githubServer.listRepositories()
+            .then(list => {
+                if (!cancelled) {
+                    setRepositories(list);
+                }
+            })
+            .catch(err => {
+                if (!cancelled) {
+                    console.error('[fokkus-github-pr] No se pudieron listar los repositorios', err);
+                    setRepositories([]);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [githubServer, hasToken]);
+
+    // Recarga los PR: sin filtro → todos los abiertos de todos los repos; con filtro → PR del repo.
+    React.useEffect(() => {
+        if (!hasToken) {
             setPrs([]);
             setError(undefined);
             return;
@@ -215,11 +234,14 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
         let cancelled = false;
         setLoading(true);
         setError(undefined);
-        githubServer.listPullRequests(repo, stateFilter)
+        const request = repoFilter === ''
+            ? githubServer.listOpenPullRequestsAllRepos()
+            : githubServer.listPullRequests(repoFilter, stateFilter);
+        request
             .then(list => {
                 if (!cancelled) {
                     setPrs(list);
-                    setExpandedNumber(undefined);
+                    setExpandedKey(undefined);
                     setFilesByPr({});
                 }
             })
@@ -237,23 +259,27 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
         return () => {
             cancelled = true;
         };
-    }, [githubServer, repo, stateFilter, reloadToken]);
+    }, [githubServer, hasToken, repoFilter, stateFilter, reloadToken]);
 
-    // Carga perezosa de los archivos del PR expandido.
+    // Carga perezosa de los archivos del PR expandido, usando pr.repo.
     React.useEffect(() => {
-        if (expandedNumber === undefined || !repo) {
+        if (!expandedKey || !hasToken) {
             return;
         }
-        if (filesByPr[expandedNumber]) {
+        if (filesByPr[expandedKey]) {
+            return;
+        }
+        const pr = prs.find(item => prKey(item) === expandedKey);
+        if (!pr) {
             return;
         }
         let cancelled = false;
-        setFilesLoadingNumber(expandedNumber);
+        setFilesLoadingKey(expandedKey);
         setFilesError(undefined);
-        githubServer.listPullRequestFiles(repo, expandedNumber)
+        githubServer.listPullRequestFiles(pr.repo, pr.number)
             .then(files => {
                 if (!cancelled) {
-                    setFilesByPr(prev => ({ ...prev, [expandedNumber]: files }));
+                    setFilesByPr(prev => ({ ...prev, [expandedKey]: files }));
                 }
             })
             .catch(err => {
@@ -263,32 +289,44 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
             })
             .finally(() => {
                 if (!cancelled) {
-                    setFilesLoadingNumber(undefined);
+                    setFilesLoadingKey(undefined);
                 }
             });
         return () => {
             cancelled = true;
         };
-    }, [expandedNumber, repo, githubServer, filesByPr]);
+    }, [expandedKey, hasToken, prs, githubServer, filesByPr]);
 
-    const handleRepoInputChange = (value: string): void => {
-        setRepoInput(value);
+    const handleRepoFilterChange = (value: string): void => {
+        if (value === '') {
+            // En modo global el estado se fija visualmente en "Abiertos".
+            setStateFilter('open');
+            localStorage.setItem(storageKey(workspaceUri), ALL_REPOS_SENTINEL);
+        } else {
+            localStorage.setItem(storageKey(workspaceUri), value);
+        }
+        setRepoFilter(value);
     };
 
-    const commitRepo = (): void => {
-        const trimmed = repoInput.trim();
-        if (!trimmed) {
-            setRepo('');
-            return;
-        }
-        if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) {
-            setRepoError('Repositorio inválido, usa owner/nombre');
-            return;
-        }
+    const handleDetect = React.useCallback(async (): Promise<void> => {
+        setDetecting(true);
         setRepoError(undefined);
-        localStorage.setItem(storageKey(workspaceUri), trimmed);
-        setRepo(trimmed);
-    };
+        try {
+            const roots = await workspaceService.roots;
+            const root = roots[0];
+            const detected = root ? await githubServer.detectRepository(root.resource.toString()) : undefined;
+            if (detected) {
+                setRepoFilter(detected);
+                localStorage.setItem(storageKey(workspaceUri), detected);
+            } else {
+                setRepoError('No se detectó un repositorio de GitHub en la carpeta abierta.');
+            }
+        } catch (err) {
+            setRepoError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setDetecting(false);
+        }
+    }, [githubServer, workspaceService, workspaceUri]);
 
     const handleOpenGithubPanel = (): void => {
         commandService.executeCommand(GITHUB_PANEL_TOGGLE_COMMAND_ID)
@@ -296,21 +334,32 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
     };
 
     const handleReview = async (pr: GitHubPullRequest): Promise<void> => {
-        setReviewingNumber(pr.number);
+        const key = prKey(pr);
+        setReviewingKey(key);
         setReviewError(undefined);
         try {
-            let files = filesByPr[pr.number];
+            let files = filesByPr[key];
             if (!files) {
-                files = await githubServer.listPullRequestFiles(repo, pr.number);
-                setFilesByPr(prev => ({ ...prev, [pr.number]: files }));
+                files = await githubServer.listPullRequestFiles(pr.repo, pr.number);
+                setFilesByPr(prev => ({ ...prev, [key]: files }));
             }
-            await dispatcher.send(buildPullRequestReviewPrompt(repo, pr, files));
+            await dispatcher.send(buildPullRequestReviewPrompt(pr.repo, pr, files));
         } catch (err) {
             setReviewError(err instanceof Error ? err.message : String(err));
         } finally {
-            setReviewingNumber(undefined);
+            setReviewingKey(undefined);
         }
     };
+
+    // Asegura que el repo seleccionado (detectado o persistido) aparezca como opción
+    // aunque listRepositories no lo devuelva.
+    const repoOptions = React.useMemo<GitHubRepo[]>(() => {
+        if (!repoFilter || repositories.some(repo => repo.fullName === repoFilter)) {
+            return repositories;
+        }
+        const [owner = '', repoName = ''] = repoFilter.split('/');
+        return [...repositories, { fullName: repoFilter, owner, name: repoName, private: false }];
+    }, [repositories, repoFilter]);
 
     const filteredPrs = React.useMemo(() => {
         const query = normalizeForSearch(searchQuery);
@@ -319,9 +368,12 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
         }
         return prs.filter(pr =>
             normalizeForSearch(`#${pr.number}`).includes(query) ||
-            normalizeForSearch(pr.title).includes(query)
+            normalizeForSearch(pr.title).includes(query) ||
+            normalizeForSearch(pr.repo).includes(query)
         );
     }, [prs, searchQuery]);
+
+    const isGlobalMode = repoFilter === '';
 
     return (
         <div className='fokkus-github-pr'>
@@ -335,27 +387,23 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
             )}
 
             <div className='fokkus-github-repo-row'>
-                <input
+                <select
                     className='fokkus-backlog-input'
-                    type='text'
-                    value={repoInput}
-                    onChange={event => handleRepoInputChange(event.target.value)}
-                    onBlur={commitRepo}
-                    onKeyDown={event => {
-                        if (event.key === 'Enter') {
-                            event.preventDefault();
-                            commitRepo();
-                        }
-                    }}
-                    placeholder='owner/repo'
-                    disabled={!config?.hasToken}
+                    value={repoFilter}
+                    onChange={event => handleRepoFilterChange(event.target.value)}
+                    disabled={!hasToken}
                     aria-label='Repositorio'
-                />
+                >
+                    <option value=''>Todos los repositorios</option>
+                    {repoOptions.map(repo => (
+                        <option key={repo.fullName} value={repo.fullName}>{repo.fullName}</option>
+                    ))}
+                </select>
                 <button
                     type='button'
                     className='fokkus-github-detect-button'
-                    onClick={() => refreshRepo(true).catch(err => console.error('[fokkus-github-pr] No se pudo detectar el repositorio', err))}
-                    disabled={detecting || !config?.hasToken}
+                    onClick={() => handleDetect().catch(err => console.error('[fokkus-github-pr] No se pudo detectar el repositorio', err))}
+                    disabled={detecting || !hasToken}
                 >
                     Detectar
                 </button>
@@ -365,9 +413,9 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
             <div className='fokkus-github-filters'>
                 <select
                     className='fokkus-backlog-input'
-                    value={stateFilter}
+                    value={isGlobalMode ? 'open' : stateFilter}
                     onChange={event => setStateFilter(event.target.value as 'open' | 'closed' | 'all')}
-                    disabled={!config?.hasToken || !repo}
+                    disabled={!hasToken || isGlobalMode}
                     aria-label='Estado'
                 >
                     <option value='open'>Abiertos</option>
@@ -380,7 +428,7 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
                     title='Refrescar'
                     aria-label='Refrescar'
                     onClick={() => setReloadToken(token => token + 1)}
-                    disabled={loading || !config?.hasToken || !repo}
+                    disabled={loading || !hasToken}
                 >
                     <i className='fa fa-refresh' />
                 </button>
@@ -391,29 +439,30 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
                 type='search'
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
-                placeholder='Buscar por número o título…'
+                placeholder='Buscar por repo, número o título…'
                 disabled={prs.length === 0}
                 aria-label='Buscar pull requests'
             />
 
             {loading && <div className='fokkus-backlog-status'>Cargando pull requests…</div>}
             {error && <div className='fokkus-backlog-error'>{error}</div>}
-            {!loading && !error && repo && prs.length === 0 && (
+            {!loading && !error && hasToken && prs.length === 0 && (
                 <div className='fokkus-backlog-status'>Sin pull requests</div>
             )}
             {!loading && !error && prs.length > 0 && filteredPrs.length === 0 && (
                 <div className='fokkus-backlog-status'>Sin resultados para la búsqueda</div>
             )}
             {!loading && filteredPrs.map(pr => {
-                const expanded = expandedNumber === pr.number;
-                const files = filesByPr[pr.number];
-                const filesLoading = filesLoadingNumber === pr.number;
+                const key = prKey(pr);
+                const expanded = expandedKey === key;
+                const files = filesByPr[key];
+                const filesLoading = filesLoadingKey === key;
                 return (
-                    <article key={pr.number} className='fokkus-backlog-card'>
+                    <article key={key} className='fokkus-backlog-card'>
                         <button
                             type='button'
                             className='fokkus-github-card-header'
-                            onClick={() => setExpandedNumber(expanded ? undefined : pr.number)}
+                            onClick={() => setExpandedKey(expanded ? undefined : key)}
                             aria-expanded={expanded}
                         >
                             <span className='fokkus-backlog-code'>#{pr.number}</span>
@@ -421,6 +470,7 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
                             <span className={`fokkus-github-badge fokkus-github-badge-${prStateTone(pr)}`}>{prStateLabel(pr)}</span>
                         </button>
                         <div className='fokkus-github-meta'>
+                            {isGlobalMode && <span className='fokkus-github-repo'>{pr.repo} · </span>}
                             {pr.author} · {pr.headRef} → {pr.baseRef} · {formatRelativeDate(pr.updatedAt)}
                         </div>
                         {expanded && (
@@ -451,10 +501,10 @@ function GitHubPullRequestsApp({ githubServer, windowService, workspaceService, 
                                         type='button'
                                         className='fokkus-backlog-apply'
                                         onClick={() => handleReview(pr).catch(err => console.error('[fokkus-github-pr] No se pudo enviar la revisión', err))}
-                                        disabled={reviewingNumber === pr.number}
+                                        disabled={reviewingKey === key}
                                     >
                                         <i className='fa fa-magic' />
-                                        {reviewingNumber === pr.number ? 'Enviando…' : 'Revisar con IA'}
+                                        {reviewingKey === key ? 'Enviando…' : 'Pedir revisión a agentes'}
                                     </button>
                                     <button
                                         type='button'

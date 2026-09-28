@@ -26,7 +26,7 @@ export function buildDevelopPrompt(issue: PlaneIssue): string {
     const head = issue.code ? `${issue.code} - ${issue.title}` : issue.title;
     return `Desarrolla la siguiente Historia de Usuario: ${head}. Descripción: ${description}.\n\n`
         + `INSTRUCCIÓN CRÍTICA: Debes desarrollar esta historia trabajando sí o sí con todo el resto del equipo del IDE (Swarm). `
-        + `Asegúrate de delegar las tareas (a Claude y Deepseek V4 Pro según corresponda), respetar sus prompts y roles, `
+        + `Asegúrate de delegar las tareas a los agentes designados según su rol, respetar sus prompts y áreas de especialidad, `
         + `realizar pruebas de QA exhaustivas, y coordinar todo para asegurar que el trabajo se distribuya por todo el equipo `
         + `y se cumplan exitosamente todas las etapas del desarrollo.`;
 }

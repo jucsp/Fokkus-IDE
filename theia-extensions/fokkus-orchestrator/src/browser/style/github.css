@@ -1,0 +1,221 @@
+/********************************************************************************
+ * GitHub Pull Requests (Source Control) — styles (prefixed with fokkus-github-)
+ ********************************************************************************/
+
+.fokkus-github-pr {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px;
+    box-sizing: border-box;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+}
+
+.fokkus-github-token-warning {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 7px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fcd34d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+.fokkus-github-repo-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+
+.fokkus-github-repo-row .fokkus-backlog-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.fokkus-github-detect-button {
+    flex-shrink: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    border-radius: 7px;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.fokkus-github-detect-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-github-detect-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.fokkus-github-filters {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+}
+
+.fokkus-github-filters .fokkus-backlog-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.fokkus-github-search {
+    width: 100%;
+}
+
+.fokkus-github-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.78rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fokkus-github-card-header:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fokkus-github-card-header .fokkus-backlog-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.fokkus-github-meta {
+    padding: 0 10px 8px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.7rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-github-badge {
+    flex-shrink: 0;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+}
+
+.fokkus-github-badge-open {
+    background: rgba(63, 185, 80, 0.16);
+    border: 1px solid rgba(63, 185, 80, 0.4);
+    color: #3fb950;
+}
+
+.fokkus-github-badge-closed {
+    background: rgba(248, 81, 73, 0.16);
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    color: #f85149;
+}
+
+.fokkus-github-badge-merged {
+    background: rgba(163, 113, 247, 0.16);
+    border: 1px solid rgba(163, 113, 247, 0.4);
+    color: #a371f7;
+}
+
+.fokkus-github-badge-draft {
+    background: rgba(139, 148, 158, 0.16);
+    border: 1px solid rgba(139, 148, 158, 0.4);
+    color: #8b949e;
+}
+
+.fokkus-github-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    padding: 8px 10px 10px;
+}
+
+.fokkus-github-files-title {
+    margin-bottom: 4px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.fokkus-github-file-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.fokkus-github-file-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-github-file-status {
+    flex-shrink: 0;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.64rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.fokkus-github-file-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.fokkus-github-file-diff {
+    flex-shrink: 0;
+    display: inline-flex;
+    gap: 4px;
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.68rem;
+}
+
+.fokkus-github-adds {
+    color: #3fb950;
+}
+
+.fokkus-github-dels {
+    color: #f85149;
+}
+
+.fokkus-github-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.fokkus-github-actions .fokkus-backlog-apply,
+.fokkus-github-actions .fokkus-backlog-icon-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}

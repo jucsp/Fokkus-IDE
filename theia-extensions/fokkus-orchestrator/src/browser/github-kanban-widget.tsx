@@ -11,44 +11,44 @@ import * as React from 'react';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
-import { PlaneIssue, PlaneServer } from '../common/plane-protocol';
+import { GitHubIssue } from '../common/github-protocol';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
-import { issueDescriptionToText, PlaneIssueDetail } from './plane-issue-detail';
-import { PlaneKanbanService, PlaneKanbanSnapshot } from './plane-kanban-service';
+import { GitHubHtml, htmlToPlainText } from './github-html';
+import { GitHubIssuesService, GitHubIssuesSnapshot } from './github-issues-service';
 
-export const PLANE_KANBAN_WIDGET_ID = 'fokkus-kanban-widget';
+export const GITHUB_KANBAN_WIDGET_ID = 'fokkus-github-kanban-widget';
 
 /** Construye el prompt que se envía a Fokkus Team al pulsar Play en una tarjeta del Kanban. */
-export function buildDevelopPrompt(issue: PlaneIssue): string {
+export function buildGitHubDevelopPrompt(issue: GitHubIssue, repo?: string): string {
     // Sin punto final: la plantilla ya agrega uno (evita «1 clic..»).
-    const description = issueDescriptionToText(issue.descriptionHtml).replace(/\.+$/, '') || 'Sin descripción';
+    const description = htmlToPlainText(issue.bodyHtml).replace(/\.+$/, '') || 'Sin descripción';
     const head = issue.code ? `${issue.code} - ${issue.title}` : issue.title;
-    return `Desarrolla la siguiente Historia de Usuario: ${head}. Descripción: ${description}.\n\n`
-        + `INSTRUCCIÓN CRÍTICA: Debes desarrollar esta historia trabajando sí o sí con todo el resto del equipo del IDE (Swarm). `
-        + `Asegúrate de delegar las tareas a los agentes designados según su rol, respetar sus prompts y áreas de especialidad, `
-        + `realizar pruebas de QA exhaustivas, y coordinar todo para asegurar que el trabajo se distribuya por todo el equipo `
-        + `y se cumplan exitosamente todas las etapas del desarrollo.`;
+    const repoReference = repo ? ` del repositorio ${repo}` : '';
+    return `Desarrolla el siguiente Issue de GitHub${repoReference}: ${head}. Descripción: ${description}.\n\n`
+        + 'INSTRUCCIÓN CRÍTICA: Debes desarrollar este issue trabajando sí o sí con todo el resto del equipo del IDE (Swarm). '
+        + 'Asegúrate de delegar las tareas a los agentes designados según su rol, respetar sus prompts y áreas de especialidad, '
+        + 'realizar pruebas de QA exhaustivas, y coordinar todo para asegurar que el trabajo se distribuya por todo el equipo '
+        + 'y se cumplan exitosamente todas las etapas del desarrollo.';
 }
 
 interface KanbanColumn {
     id: string;
     name: string;
     color?: string;
-    issues: PlaneIssue[];
+    issues: GitHubIssue[];
 }
 
-interface PlaneKanbanBoardProps {
-    snapshot: PlaneKanbanSnapshot;
-    planeServer: PlaneServer;
+interface GitHubKanbanBoardProps {
+    snapshot: GitHubIssuesSnapshot;
     windowService: WindowService;
-    onPlay: (issue: PlaneIssue) => void;
+    onPlay: (issue: GitHubIssue) => void;
 }
 
 interface KanbanCardProps {
-    issue: PlaneIssue;
+    issue: GitHubIssue;
     selected: boolean;
     onOpen: () => void;
-    onPlay: (issue: PlaneIssue) => void;
+    onPlay: (issue: GitHubIssue) => void;
 }
 
 function KanbanCard({ issue, selected, onOpen, onPlay }: KanbanCardProps): React.ReactElement {
@@ -66,7 +66,7 @@ function KanbanCard({ issue, selected, onOpen, onPlay }: KanbanCardProps): React
             }}
         >
             <div className='fokkus-kanban-card-top'>
-                {issue.code && <span className='fokkus-backlog-code'>{issue.code}</span>}
+                <span className='fokkus-backlog-code'>{issue.code}</span>
                 <button
                     type='button'
                     className='fokkus-kanban-play'
@@ -81,52 +81,53 @@ function KanbanCard({ issue, selected, onOpen, onPlay }: KanbanCardProps): React
                 </button>
             </div>
             <div className='fokkus-kanban-card-title'>{issue.title}</div>
-            <div className='fokkus-kanban-card-meta'>{issue.estimate ?? '—'}</div>
+            <div className='fokkus-kanban-card-meta'>{issue.author}</div>
         </article>
     );
 }
 
-function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: PlaneKanbanBoardProps): React.ReactElement {
-    const { project, states, issues, config } = snapshot;
+function GitHubKanbanBoard({ snapshot, windowService, onPlay }: GitHubKanbanBoardProps): React.ReactElement {
+    const { repo, columns, issues } = snapshot;
     const [selectedIssueId, setSelectedIssueId] = React.useState<string | undefined>(undefined);
     const drawerRef = React.useRef<HTMLElement | undefined>(undefined);
 
-    // Si la issue seleccionada desaparece del snapshot (nuevos filtros), se cierra el drawer.
+    // Si el issue seleccionado desaparece del snapshot (nuevos filtros), se cierra el drawer.
     React.useEffect(() => {
         if (selectedIssueId && !issues.some(issue => issue.id === selectedIssueId)) {
             setSelectedIssueId(undefined);
         }
     }, [issues, selectedIssueId]);
 
-    const columns = React.useMemo<KanbanColumn[]>(() => {
-        const byState = new Map<string, PlaneIssue[]>();
-        const unknown: PlaneIssue[] = [];
+    const boardColumns = React.useMemo<KanbanColumn[]>(() => {
+        const byColumn = new Map<string, GitHubIssue[]>();
+        const unknown: GitHubIssue[] = [];
         for (const issue of issues) {
-            const state = issue.stateId ? states.find(item => item.id === issue.stateId) : undefined;
-            if (state) {
-                const list = byState.get(state.id) ?? [];
+            const column = issue.columnId ? columns.find(item => item.id === issue.columnId) : undefined;
+            if (column) {
+                const list = byColumn.get(column.id) ?? [];
                 list.push(issue);
-                byState.set(state.id, list);
+                byColumn.set(column.id, list);
             } else {
                 unknown.push(issue);
             }
         }
-        const result = states.map(state => ({
-            id: state.id,
-            name: state.name,
-            color: state.color,
-            issues: byState.get(state.id) ?? []
+        const result = columns.map(column => ({
+            id: column.id,
+            name: column.name,
+            color: column.color,
+            issues: byColumn.get(column.id) ?? []
         }));
         if (unknown.length > 0) {
-            result.push({ id: '__none__', name: 'Sin estado', color: undefined, issues: unknown });
+            result.push({ id: '__none__', name: 'Sin columna', color: undefined, issues: unknown });
         }
         return result;
-    }, [issues, states]);
+    }, [issues, columns]);
 
     const selectedIssue = issues.find(issue => issue.id === selectedIssueId);
-    const selectedStateName = selectedIssue
-        ? states.find(state => state.id === selectedIssue.stateId)?.name ?? 'Sin estado'
-        : 'Sin estado';
+    const selectedColumn = selectedIssue
+        ? columns.find(column => column.id === selectedIssue.columnId)
+        : undefined;
+    const selectedColumnName = selectedColumn?.name ?? 'Sin columna';
 
     // Cierra el drawer al hacer clic fuera o al pulsar Escape. El clic sobre una tarjeta
     // solo cambia la selección (no cierra y reabre) para que el usuario no pierda contexto.
@@ -160,10 +161,10 @@ function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: Plan
         };
     }, [selectedIssueId]);
 
-    if (!project) {
+    if (!repo) {
         return (
             <div className='fokkus-kanban-empty'>
-                Selecciona un proyecto en el panel Backlog y aplica filtros
+                Selecciona un repositorio en el panel GitHub Issues y aplica filtros
             </div>
         );
     }
@@ -171,7 +172,7 @@ function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: Plan
     return (
         <div className='fokkus-kanban'>
             <div className='fokkus-kanban-board'>
-                {columns.map(column => (
+                {boardColumns.map(column => (
                     <section key={column.id} className='fokkus-kanban-column'>
                         <header className='fokkus-kanban-column-header'>
                             <span
@@ -205,7 +206,7 @@ function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: Plan
                     ref={element => { drawerRef.current = element ?? undefined; }}
                 >
                     <header className='fokkus-kanban-drawer-header'>
-                        {selectedIssue.code && <span className='fokkus-backlog-code'>{selectedIssue.code}</span>}
+                        <span className='fokkus-backlog-code'>{selectedIssue.code}</span>
                         <button
                             type='button'
                             className='fokkus-kanban-play fokkus-kanban-play-labeled'
@@ -224,15 +225,22 @@ function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: Plan
                     </header>
                     <h2 className='fokkus-kanban-drawer-title'>{selectedIssue.title}</h2>
                     <div className='fokkus-kanban-drawer-meta'>
-                        <span>Estado: {selectedStateName}</span>
-                        <span>Estimación: {selectedIssue.estimate ?? '—'}</span>
+                        <span>Columna: {selectedColumnName}</span>
+                        <span>Estado: {selectedIssue.state === 'open' ? 'Abierto' : 'Cerrado'}</span>
+                        <span>Autor: {selectedIssue.author}</span>
                     </div>
-                    <PlaneIssueDetail
-                        issue={selectedIssue}
-                        config={config}
-                        planeServer={planeServer}
-                        windowService={windowService}
-                    />
+                    <div className='fokkus-github-issue-detail'>
+                        <GitHubHtml html={selectedIssue.bodyHtml} windowService={windowService} />
+                        <div className='fokkus-github-actions'>
+                            <button
+                                type='button'
+                                className='fokkus-backlog-icon-button'
+                                onClick={() => windowService.openNewWindow(selectedIssue.htmlUrl, { external: true })}
+                            >
+                                <i className='fa fa-external-link' /> Abrir en GitHub
+                            </button>
+                        </div>
+                    </div>
                 </aside>
             )}
         </div>
@@ -240,16 +248,13 @@ function PlaneKanbanBoard({ snapshot, planeServer, windowService, onPlay }: Plan
 }
 
 @injectable()
-export class PlaneKanbanWidget extends ReactWidget {
+export class GitHubKanbanWidget extends ReactWidget {
 
-    static readonly ID = PLANE_KANBAN_WIDGET_ID;
-    static readonly LABEL = 'Kanban';
+    static readonly ID = GITHUB_KANBAN_WIDGET_ID;
+    static readonly LABEL = 'GitHub Kanban';
 
-    @inject(PlaneKanbanService)
-    protected readonly kanbanService: PlaneKanbanService;
-
-    @inject(PlaneServer)
-    protected readonly planeServer: PlaneServer;
+    @inject(GitHubIssuesService)
+    protected readonly kanbanService: GitHubIssuesService;
 
     @inject(WindowService)
     protected readonly windowService: WindowService;
@@ -259,9 +264,9 @@ export class PlaneKanbanWidget extends ReactWidget {
 
     @postConstruct()
     protected init(): void {
-        this.id = PlaneKanbanWidget.ID;
-        this.title.label = PlaneKanbanWidget.LABEL;
-        this.title.caption = PlaneKanbanWidget.LABEL;
+        this.id = GitHubKanbanWidget.ID;
+        this.title.label = GitHubKanbanWidget.LABEL;
+        this.title.caption = GitHubKanbanWidget.LABEL;
         this.title.closable = true;
         this.title.iconClass = 'fa fa-columns';
         this.toDispose.push(this.kanbanService.onDidChange(() => {
@@ -273,24 +278,23 @@ export class PlaneKanbanWidget extends ReactWidget {
     }
 
     protected updateTitle(): void {
-        const project = this.kanbanService.snapshot.project;
-        this.title.label = project ? `Kanban · ${project.identifier}` : 'Kanban';
+        const repo = this.kanbanService.snapshot.repo;
+        this.title.label = repo ? `GitHub Kanban · ${repo}` : 'GitHub Kanban';
     }
 
-    protected onPlayIssue(issue: PlaneIssue): void {
-        this.playIssue(issue).catch(error => console.error('[fokkus-kanban] No se pudo enviar el issue a Fokkus Team', error));
+    protected onPlayIssue(issue: GitHubIssue): void {
+        this.playIssue(issue).catch(error => console.error('[fokkus-github-kanban] No se pudo enviar el issue a Fokkus Team', error));
     }
 
     /** Abre Fokkus Team en el panel izquierdo y le envía el prompt de desarrollo del issue. */
-    protected async playIssue(issue: PlaneIssue): Promise<void> {
-        await this.dispatcher.send(buildDevelopPrompt(issue));
+    protected async playIssue(issue: GitHubIssue): Promise<void> {
+        await this.dispatcher.send(buildGitHubDevelopPrompt(issue, this.kanbanService.snapshot.repo));
     }
 
     protected render(): React.ReactNode {
         return (
-            <PlaneKanbanBoard
+            <GitHubKanbanBoard
                 snapshot={this.kanbanService.snapshot}
-                planeServer={this.planeServer}
                 windowService={this.windowService}
                 onPlay={issue => this.onPlayIssue(issue)}
             />

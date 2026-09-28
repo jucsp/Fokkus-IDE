@@ -11,13 +11,24 @@ import '../../src/browser/style/index.css';
 import '../../src/browser/style/theme.css';
 import '../../src/browser/style/plane-backlog.css';
 import '../../src/browser/style/plane-kanban.css';
+import '../../src/browser/style/github.css';
+import '../../src/browser/style/github-issues.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
+import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
+import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contribution';
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
+import { GitHubIssuesContribution } from './github-issues-contribution';
+import { GitHubIssuesService } from './github-issues-service';
+import { GitHubIssuesWidget } from './github-issues-widget';
+import { GitHubKanbanContribution } from './github-kanban-contribution';
+import { GitHubKanbanWidget } from './github-kanban-widget';
+import { GitHubPullRequestsWidget } from './github-pull-requests-widget';
+import { GitHubScmContribution } from './github-scm-contribution';
 import { PlaneBacklogContribution } from './plane-backlog-contribution';
 import { PlaneBacklogWidget } from './plane-backlog-widget';
 import { PlaneKanbanContribution } from './plane-kanban-contribution';
@@ -66,8 +77,42 @@ export default new ContainerModule(bind => {
         createWidget: () => context.container.get<PlaneKanbanWidget>(PlaneKanbanWidget)
     })).inSingletonScope();
 
+    bindViewContribution(bind, GitHubIssuesContribution);
+    bind(FrontendApplicationContribution).toService(GitHubIssuesContribution);
+
+    bind(GitHubIssuesWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: GitHubIssuesWidget.ID,
+        createWidget: () => context.container.get<GitHubIssuesWidget>(GitHubIssuesWidget)
+    })).inSingletonScope();
+
+    bind(GitHubIssuesService).toSelf().inSingletonScope();
+
+    bindViewContribution(bind, GitHubKanbanContribution);
+    bind(GitHubKanbanWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: GitHubKanbanWidget.ID,
+        createWidget: () => context.container.get<GitHubKanbanWidget>(GitHubKanbanWidget)
+    })).inSingletonScope();
+
     bind(PlaneServer).toDynamicValue(context => {
         const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
         return provider.createProxy<PlaneServer>(PlaneServerPath);
+    }).inSingletonScope();
+
+    bind(FokkusChatDispatcher).toSelf().inSingletonScope();
+
+    bind(GitHubPullRequestsWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: GitHubPullRequestsWidget.ID,
+        createWidget: () => context.container.get<GitHubPullRequestsWidget>(GitHubPullRequestsWidget)
+    })).inSingletonScope();
+
+    bind(GitHubScmContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(GitHubScmContribution);
+
+    bind(GitHubServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<GitHubServer>(GitHubServerPath);
     }).inSingletonScope();
 });

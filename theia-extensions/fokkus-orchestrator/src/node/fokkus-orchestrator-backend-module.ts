@@ -11,8 +11,10 @@ import { ContainerModule } from '@theia/core/shared/inversify';
 import { ConnectionHandler, RpcConnectionHandler } from '@theia/core/lib/common';
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
+import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { FokkusOrchestratorServerImpl } from './fokkus-orchestrator-server';
 import { PlaneServerImpl } from './plane-server';
+import { GitHubServerImpl } from './github-server';
 
 export default new ContainerModule(bind => {
     bind(FokkusOrchestratorServer).to(FokkusOrchestratorServerImpl).inSingletonScope();
@@ -26,6 +28,13 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(PlaneServerPath, () =>
             context.container.get<PlaneServer>(PlaneServer)
+        )
+    ).inSingletonScope();
+
+    bind(GitHubServer).to(GitHubServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(GitHubServerPath, () =>
+            context.container.get<GitHubServer>(GitHubServer)
         )
     ).inSingletonScope();
 });

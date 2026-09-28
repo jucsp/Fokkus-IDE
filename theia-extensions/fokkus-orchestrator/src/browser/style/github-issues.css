@@ -1,0 +1,53 @@
+/********************************************************************************
+ * GitHub Issues — estilos específicos (labels, assignees y detalle del issue).
+ ********************************************************************************/
+
+.fokkus-github-issue-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 0 10px 8px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-github-label-list {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.fokkus-github-label-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.fokkus-github-assignees {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.fokkus-github-assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.fokkus-github-issue-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fokkus-github-issue-detail .fokkus-github-actions {
+    padding: 0 10px 10px;
+}

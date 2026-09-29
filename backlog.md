@@ -10,6 +10,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #5 Detección de proyecto y contexto: el agente reconoce la carpeta abierta sin necesidad de workspace (`.theia-workspace`) y sigue el protocolo jerárquico de contexto (historial -> backlog -> proyecto).
 
 ## Bugs Reportados
+- [ ] #19 Bug: Las imágenes de Plane no se visualizan en el IDE (forzan descarga en navegador).
+  - _Problema:_ Plane restringe el acceso a `assets` con API Key. Solo admite cookies de sesión nativas y devuelve `Content-Disposition: attachment`.
 - [x] #16 Responsive horizontal del chat se rompe al estrechar el panel lateral (squished text).
   - _Fix v1.0.9:_ el panel Fokkus Team tiene ancho mínimo de 260px; las burbujas, el textarea y el markdown (tablas, bloques de código, URLs largas) ya no desbordan ni se aplastan, y la barra de uso y el input se compactan con container queries en anchos chicos.
 - [x] #14 Error de instalación Auto-Updater (RPM): Falla elevación de privilegios con `pkexec must be setuid root`.
@@ -37,7 +39,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #12 Agregar botón "Stop" en el chat para detener la ejecución de los agentes.
 - [x] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
-- [ ] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
+- [x] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
+  - _v1.5.0:_ sección «Bitbucket Pull Requests» en Source Control, en modo solo lectura (solo GET a `api.bitbucket.org`): vista global de abiertos con errores por repo, filtro por repo/estado, detalle con diffstat y «Pedir revisión a agentes» vía curl GET. Las credenciales (`~/.bitbucket_credentials.env`: tokens por repo o app password) se inyectan en el entorno de los agentes y el prompt solo las referencia por nombre.
 - [x] #4 Implementar integración con Github (mediante token o OAuth deseable).
   - _Mejora v1.3.0/v1.3.2:_ Se agregó soporte nativo en el panel Source Control para PULL REQUESTS. Filtros por repo, revisión por agentes sin aprobación directa, y despliegue global de PRs.
 - [x] #21 Mejora: Usar token de integración de GitHub para auditar Pull Requests en lugar de git fetch plano (evitar prompt de credenciales).

@@ -16,9 +16,12 @@ import '../../src/browser/style/github-issues.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { ContainerModule } from '@theia/core/shared/inversify';
+import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protocol';
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
+import { BitbucketPullRequestsWidget } from './bitbucket-pull-requests-widget';
+import { BitbucketScmContribution } from './bitbucket-scm-contribution';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contribution';
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
@@ -114,5 +117,19 @@ export default new ContainerModule(bind => {
     bind(GitHubServer).toDynamicValue(context => {
         const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
         return provider.createProxy<GitHubServer>(GitHubServerPath);
+    }).inSingletonScope();
+
+    bind(BitbucketPullRequestsWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: BitbucketPullRequestsWidget.ID,
+        createWidget: () => context.container.get<BitbucketPullRequestsWidget>(BitbucketPullRequestsWidget)
+    })).inSingletonScope();
+
+    bind(BitbucketScmContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(BitbucketScmContribution);
+
+    bind(BitbucketServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<BitbucketServer>(BitbucketServerPath);
     }).inSingletonScope();
 });

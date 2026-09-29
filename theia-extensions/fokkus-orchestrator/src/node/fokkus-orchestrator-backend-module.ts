@@ -12,9 +12,11 @@ import { ConnectionHandler, RpcConnectionHandler } from '@theia/core/lib/common'
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
+import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protocol';
 import { FokkusOrchestratorServerImpl } from './fokkus-orchestrator-server';
 import { PlaneServerImpl } from './plane-server';
 import { GitHubServerImpl } from './github-server';
+import { BitbucketServerImpl } from './bitbucket-server';
 
 export default new ContainerModule(bind => {
     bind(FokkusOrchestratorServer).to(FokkusOrchestratorServerImpl).inSingletonScope();
@@ -35,6 +37,13 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(GitHubServerPath, () =>
             context.container.get<GitHubServer>(GitHubServer)
+        )
+    ).inSingletonScope();
+
+    bind(BitbucketServer).to(BitbucketServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(BitbucketServerPath, () =>
+            context.container.get<BitbucketServer>(BitbucketServer)
         )
     ).inSingletonScope();
 });

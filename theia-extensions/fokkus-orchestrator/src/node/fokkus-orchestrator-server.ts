@@ -36,6 +36,7 @@ import {
     isExecutionMode
 } from '../common/fokkus-orchestrator-protocol';
 import { resolveApprovalState as computeApprovalState, ResolvedApprovalState } from '../common/fokkus-approval';
+import { readBitbucketCredentials } from './bitbucket-credentials';
 
 const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm)
 
@@ -325,6 +326,26 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         env.GIT_ASKPASS = '';
         env.SSH_ASKPASS = '';
         env.GCM_INTERACTIVE = 'never';
+        await this.applyAgentBitbucketEnvironment(env);
+    }
+
+    /**
+     * Expone a los agentes las credenciales de Bitbucket leídas de
+     * `~/.bitbucket_credentials.env`. Nunca sobrescribe una variable que ya venga
+     * del entorno del proceso y nunca registra nombres ni valores en los logs.
+     * Si la lectura falla, no hace nada y no lanza.
+     */
+    private async applyAgentBitbucketEnvironment(env: NodeJS.ProcessEnv): Promise<void> {
+        try {
+            const { credentials } = await readBitbucketCredentials();
+            for (const [name, value] of Object.entries(credentials.variables)) {
+                if (!env[name]) {
+                    env[name] = value;
+                }
+            }
+        } catch {
+            // Sin credenciales de Bitbucket: se continúa sin inyectar nada.
+        }
     }
 
     /**
@@ -695,9 +716,15 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     ): Promise<SwarmAgentResult> {
         const wslEnv = { ...runEnv };
         // WSLENV solo reenvía a la distro las variables listadas: el prompt, el token de
-        // GitHub y los flags que impiden a git abrir diálogos de credenciales.
+        // GitHub, las credenciales de Bitbucket y los flags que impiden a git abrir diálogos
+        // de credenciales.
         const forwarded = ['FOKKUS_SAFE_PROMPT', 'GITHUB_TOKEN', 'GH_TOKEN', 'GIT_TERMINAL_PROMPT', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GCM_INTERACTIVE']
             .filter(name => wslEnv[name] !== undefined);
+        for (const name of Object.keys(wslEnv)) {
+            if (/^BITBUCKET_[A-Z0-9_]+$/.test(name) && wslEnv[name] !== undefined && !forwarded.includes(name)) {
+                forwarded.push(name);
+            }
+        }
         const wslEnvEntries = (wslEnv.WSLENV ?? '').split(':').filter(entry => entry.length > 0);
         for (const name of forwarded) {
             if (!wslEnvEntries.some(entry => entry.split('/')[0] === name)) {

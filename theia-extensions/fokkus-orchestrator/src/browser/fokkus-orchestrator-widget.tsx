@@ -23,16 +23,30 @@ import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 
 import {
+    APPROVAL_REQUEST_FENCE,
     ChatAttachment,
+    DEFAULT_EXECUTION_MODE,
     DynamicProvider,
     DynamicRole,
+    ExecutionMode,
     FokkusOrchestratorServer,
+    isExecutionMode,
     ProvidersState,
+    RAW_DISPATCH_MODE,
     RolesState,
     SwarmEdge,
     TeamAssignments,
     TeamConfiguration
 } from '../common/fokkus-orchestrator-protocol';
+
+import {
+    ApprovalDecision,
+    ApprovalRequest,
+    buildApprovalResponse,
+    parseApprovalRequest,
+    resolveApprovalDecision,
+    stripApprovalResponseMarkers
+} from './fokkus-approval';
 
 import { SwarmBuilder, SwarmNodePositions } from './fokkus-swarm-builder-widget';
 import { SwarmNodeProviderOption } from './fokkus-swarm-node';
@@ -47,6 +61,12 @@ const ROLES_PREFERENCE_KEY = 'fokkus-orchestrator.roles';
 const TEAM_PREFERENCE_KEY = 'fokkus-orchestrator.team';
 const EDGES_PREFERENCE_KEY = 'fokkus-orchestrator.edges';
 const POSITIONS_PREFERENCE_KEY = 'fokkus-orchestrator.positions';
+const EXECUTION_MODE_PREFERENCE_KEY = 'fokkus-orchestrator.executionMode';
+
+function readExecutionMode(preferenceService: PreferenceService): ExecutionMode {
+    const value = preferenceService.get(EXECUTION_MODE_PREFERENCE_KEY);
+    return isExecutionMode(value) ? value : DEFAULT_EXECUTION_MODE;
+}
 
 /* ------------------------------------------------------------------------ */
 /* Shared helpers: dynamic ids, seed data and preference (de)serialization  */
@@ -607,7 +627,7 @@ function RolesPanel({ rolesState, onRolesChange }: RolesPanelProps): React.React
                         <div className='fokkus-role-card-glow' />
                         <div className='fokkus-role-card-header'>
                             <div className='fokkus-role-icon'>
-                                <i className='fa fa-user-gear' />
+                                <i className='fa fa-cogs' />
                             </div>
                             <div className='fokkus-role-heading'>
                                 <span className='fokkus-role-name'>{role.name}</span>
@@ -706,7 +726,7 @@ function RoleRulesModal({ role, accent, onSave, onClose }: RoleRulesModalProps):
                 <div className='fokkus-modal-glow' />
                 <header className='fokkus-modal-header'>
                     <div className='fokkus-role-icon'>
-                        <i className='fa fa-scroll' />
+                        <i className='fa fa-file-text-o' />
                     </div>
                     <div className='fokkus-role-heading'>
                         <span className='fokkus-role-name'>Reglas Base — {role.name}</span>
@@ -881,11 +901,11 @@ function TeamBuilderPanel({ providersState, rolesState, assignments, edges, posi
 }
 
 /* ------------------------------------------------------------------------ */
-/* Workspace panel — execution mode, diff review and approve/reject         */
+/* Workspace panel — execution mode selector                                */
 /* ------------------------------------------------------------------------ */
 
 interface ExecutionModeDefinition {
-    id: string;
+    id: ExecutionMode;
     name: string;
     description: string;
     icon: string;
@@ -895,149 +915,59 @@ interface ExecutionModeDefinition {
 const EXECUTION_MODES: ExecutionModeDefinition[] = [
     {
         id: 'manual',
-        name: 'Aprobación Manual',
-        description: 'Cada cambio propuesto espera tu revisión y aprobación explícita antes de aplicarse.',
-        icon: 'fa fa-hand-paper',
+        name: 'Manual',
+        description: 'El agente líder pide tu aprobación en el chat antes de cada interacción con el código: desde el plan de implementación hasta cada cambio crítico.',
+        icon: 'fa fa-hand-paper-o',
         accent: '#f59e0b'
     },
     {
         id: 'auto',
-        name: 'Decisión Automática',
-        description: 'El agente aplica los cambios de bajo riesgo sin intervención y te notifica al finalizar.',
+        name: 'Automático',
+        description: 'El líder pide al PM un plan según el estado del proyecto y delega cada etapa al área correspondiente, sin interrupciones.',
         icon: 'fa fa-bolt',
         accent: '#10c48c'
     },
     {
         id: 'plan',
-        name: 'Modo Planificación',
-        description: 'El agente solo diseña un plan de acción; ningún cambio se escribe en disco.',
+        name: 'Plan de implementación',
+        description: 'El PM genera un plan y lo apruebas en el chat. Si lo apruebas, el equipo trabaja sin interrupciones; si lo rechazas, se detiene para iterar contigo.',
         icon: 'fa fa-map',
         accent: '#38bdf8'
     }
 ];
 
-interface DiffLine {
-    type: 'add' | 'remove' | 'context';
-    content: string;
-}
-
-function parseDiff(diff: string): DiffLine[] {
-    if (!diff) {
-        return [];
-    }
-    return diff.split('\n').map(line => {
-        if (line.startsWith('+++') || line.startsWith('---')) {
-            return { type: 'context', content: line };
-        }
-        if (line.startsWith('+')) {
-            return { type: 'add', content: line };
-        }
-        if (line.startsWith('-')) {
-            return { type: 'remove', content: line };
-        }
-        return { type: 'context', content: line };
-    });
-}
-
-function extractDiffFilenames(diff: string): string {
-    const files: string[] = [];
-    for (const line of diff.split('\n')) {
-        if (line.startsWith('+++ b/')) {
-            files.push(line.slice(6).trim());
-        }
-    }
-    return files.length > 0 ? files.join(', ') : 'Working tree changes';
-}
-
 interface WorkspacePanelProps {
-    server: FokkusOrchestratorServer;
-    workspacePath: string;
+    preferenceService: PreferenceService;
 }
 
-function WorkspacePanel({ server, workspacePath }: WorkspacePanelProps): React.ReactElement {
-    const [activeMode, setActiveMode] = React.useState<string>('manual');
-    const [decision, setDecision] = React.useState<'approved' | 'rejected' | undefined>(undefined);
-    const [diff, setDiff] = React.useState<string | undefined>(undefined);
-    const [loadingDiff, setLoadingDiff] = React.useState(true);
-    const [diffError, setDiffError] = React.useState<string | undefined>(undefined);
-    const [busyAction, setBusyAction] = React.useState<'approve' | 'reject' | undefined>(undefined);
-    const [probeResult, setProbeResult] = React.useState<string | undefined>(undefined);
-    const [probeRunning, setProbeRunning] = React.useState(false);
-
-    const refreshDiff = React.useCallback(async () => {
-        setLoadingDiff(true);
-        setDiffError(undefined);
-        try {
-            const result = await server.getWorkspaceDiff(workspacePath);
-            setDiff(result);
-        } catch (error) {
-            setDiffError('No se pudo obtener el diff del workspace');
-            console.error('[fokkus-orchestrator] No se pudo obtener el diff del workspace', error);
-        } finally {
-            setLoadingDiff(false);
-        }
-    }, [server, workspacePath]);
+function WorkspacePanel({ preferenceService }: WorkspacePanelProps): React.ReactElement {
+    const [activeMode, setActiveMode] = React.useState<ExecutionMode>(() => readExecutionMode(preferenceService));
 
     React.useEffect(() => {
-        refreshDiff();
-    }, [refreshDiff]);
+        let disposed = false;
+        preferenceService.ready.then(() => {
+            if (disposed) {
+                return;
+            }
+            setActiveMode(readExecutionMode(preferenceService));
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [preferenceService]);
 
-    const approve = React.useCallback(async () => {
-        setBusyAction('approve');
-        setDecision(undefined);
-        try {
-            await server.approveDiff(workspacePath);
-            setDecision('approved');
-            await refreshDiff();
-        } catch (error) {
-            setDiffError('No se pudo aprobar los cambios');
-            console.error('[fokkus-orchestrator] No se pudo aprobar los cambios', error);
-        } finally {
-            setBusyAction(undefined);
-        }
-    }, [server, refreshDiff, workspacePath]);
-
-    const reject = React.useCallback(async () => {
-        setBusyAction('reject');
-        setDecision(undefined);
-        try {
-            await server.rejectDiff(workspacePath);
-            setDecision('rejected');
-            await refreshDiff();
-        } catch (error) {
-            setDiffError('No se pudo rechazar los cambios');
-            console.error('[fokkus-orchestrator] No se pudo rechazar los cambios', error);
-        } finally {
-            setBusyAction(undefined);
-        }
-    }, [server, refreshDiff, workspacePath]);
-
-    const runProbe = React.useCallback(async () => {
-        setProbeRunning(true);
-        setProbeResult(undefined);
-        try {
-            const pong = await server.executeTask('ping');
-            setProbeResult(pong);
-        } catch (error) {
-            setProbeResult('No se pudo contactar con el motor de ejecución');
-            console.error('[fokkus-orchestrator] La ejecución de prueba falló', error);
-        } finally {
-            setProbeRunning(false);
-        }
-    }, [server]);
-
-    const diffLines = React.useMemo(() => parseDiff(diff ?? ''), [diff]);
-    const addCount = diffLines.filter(line => line.type === 'add').length;
-    const removeCount = diffLines.filter(line => line.type === 'remove').length;
-    const diffFile = React.useMemo(() => extractDiffFilenames(diff ?? ''), [diff]);
-    const hasDiff = diff !== undefined && diff.length > 0;
+    const selectMode = React.useCallback((mode: ExecutionMode) => {
+        setActiveMode(mode);
+        preferenceService.set(EXECUTION_MODE_PREFERENCE_KEY, mode, PreferenceScope.User)
+            .catch(error => console.error('[fokkus-orchestrator] No se pudo guardar el modo de ejecución', error));
+    }, [preferenceService]);
 
     return (
         <>
             <header className='fokkus-orchestrator-header'>
-                <h2 className='fokkus-orchestrator-title'>Workspace de Ejecución</h2>
+                <h2 className='fokkus-orchestrator-title'>Modo de Ejecución</h2>
                 <p className='fokkus-orchestrator-subtitle'>
-                    Elige el nivel de autonomía del agente y revisa los cambios propuestos desde el Chat antes de aplicarlos.
+                    Elige cómo trabaja el equipo. Cuando un agente necesite tu aprobación, aparecerá en el chat con los botones Aprobar y Rechazar.
                 </p>
             </header>
 
@@ -1051,7 +981,8 @@ function WorkspacePanel({ server, workspacePath }: WorkspacePanelProps): React.R
                             type='button'
                             className={isActive ? 'fokkus-mode-card fokkus-mode-card--active' : 'fokkus-mode-card'}
                             style={cardStyle}
-                            onClick={() => setActiveMode(mode.id)}
+                            aria-pressed={isActive}
+                            onClick={() => selectMode(mode.id)}
                         >
                             <div className='fokkus-mode-card-glow' />
                             {isActive && <i className='fa fa-check-circle fokkus-mode-check' />}
@@ -1063,83 +994,6 @@ function WorkspacePanel({ server, workspacePath }: WorkspacePanelProps): React.R
                         </button>
                     );
                 })}
-            </div>
-
-            <div className='fokkus-diff-viewer'>
-                <div className='fokkus-diff-header'>
-                    <i className='fa fa-file-code' />
-                    <span className='fokkus-diff-filename'>{diffFile}</span>
-                    <span className='fokkus-diff-stats'>
-                        <span className='fokkus-diff-stat fokkus-diff-stat--add'>+{addCount}</span>
-                        <span className='fokkus-diff-stat fokkus-diff-stat--remove'>-{removeCount}</span>
-                    </span>
-                </div>
-                <div className='fokkus-diff-body'>
-                    {loadingDiff && (
-                        <div className='fokkus-diff-empty'>
-                            <i className='fa fa-spinner fa-spin' />
-                            <span>Cargando diff del workspace…</span>
-                        </div>
-                    )}
-                    {!loadingDiff && diffError !== undefined && (
-                        <div className='fokkus-diff-empty fokkus-diff-empty--error'>{diffError}</div>
-                    )}
-                    {!loadingDiff && diffError === undefined && !hasDiff && (
-                        <div className='fokkus-diff-empty'>No hay cambios pendientes en el workspace.</div>
-                    )}
-                    {!loadingDiff && diffError === undefined && hasDiff && diffLines.map((line, index) => (
-                        <div key={index} className={`fokkus-diff-line fokkus-diff-line--${line.type}`}>
-                            <span className='fokkus-diff-gutter'>
-                                {line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ''}
-                            </span>
-                            <span className='fokkus-diff-content'>{line.content}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            <div className='fokkus-decision-bar'>
-                <button
-                    type='button'
-                    className='fokkus-decision-button fokkus-decision-button--approve'
-                    onClick={approve}
-                    disabled={busyAction !== undefined || loadingDiff}
-                >
-                    <i className='fa fa-check' />
-                    <span>{busyAction === 'approve' ? 'Aprobando…' : 'Approve (Commit)'}</span>
-                </button>
-                <button
-                    type='button'
-                    className='fokkus-decision-button fokkus-decision-button--reject'
-                    onClick={reject}
-                    disabled={busyAction !== undefined || loadingDiff}
-                >
-                    <i className='fa fa-times' />
-                    <span>{busyAction === 'reject' ? 'Descartando…' : 'Reject (Discard)'}</span>
-                </button>
-                {decision !== undefined && (
-                    <span
-                        className={
-                            decision === 'approved'
-                                ? 'fokkus-decision-result fokkus-decision-result--approved'
-                                : 'fokkus-decision-result fokkus-decision-result--rejected'
-                        }
-                    >
-                        {decision === 'approved'
-                            ? 'Cambios aprobados (commit aplicado)'
-                            : 'Cambios descartados (reset aplicado)'}
-                    </span>
-                )}
-            </div>
-
-            <div className='fokkus-execution-probe'>
-                <button type='button' className='fokkus-probe-button' onClick={runProbe} disabled={probeRunning}>
-                    <i className='fa fa-play' />
-                    <span>{probeRunning ? 'Ejecutando…' : 'Ejecutar Prueba'}</span>
-                </button>
-                {probeResult !== undefined && (
-                    <span className='fokkus-probe-result'>{probeResult}</span>
-                )}
             </div>
         </>
     );
@@ -1161,17 +1015,16 @@ const FOKKUS_SETTINGS_TABS: FokkusSettingsTabDefinition[] = [
     { id: 'providers', label: 'Providers', icon: 'fa fa-plug' },
     { id: 'roles', label: 'Roles', icon: 'fa fa-id-badge' },
     { id: 'team', label: 'Team', icon: 'fa fa-users' },
-    { id: 'workspace', label: 'Workspace', icon: 'fa fa-code-branch' }
+    { id: 'workspace', label: 'Workspace', icon: 'fa fa-sliders' }
 ];
 
 interface FokkusSettingsAppProps {
     preferenceService: PreferenceService;
     orchestratorServer: FokkusOrchestratorServer;
-    workspaceService: WorkspaceService;
     windowService: WindowService;
 }
 
-function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceService, windowService }: FokkusSettingsAppProps): React.ReactElement {
+function FokkusSettingsApp({ preferenceService, orchestratorServer, windowService }: FokkusSettingsAppProps): React.ReactElement {
     const [activeTab, setActiveTab] = React.useState<FokkusSettingsTabId>('providers');
     const [providersState, setProvidersState] = React.useState<ProvidersState>(() => normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY)));
     const [rolesState, setRolesState] = React.useState<RolesState>(() => normalizeRolesState(preferenceService.get(ROLES_PREFERENCE_KEY)));
@@ -1344,7 +1197,7 @@ function FokkusSettingsApp({ preferenceService, orchestratorServer, workspaceSer
                     onPositionsChange={handlePositionsChange}
                 />
             )}
-            {activeTab === 'workspace' && <WorkspacePanel server={orchestratorServer} workspacePath={getWorkspacePath(workspaceService)} />}
+            {activeTab === 'workspace' && <WorkspacePanel preferenceService={preferenceService} />}
         </div>
     );
 }
@@ -1360,9 +1213,6 @@ export class FokkusSettingsWidget extends ReactWidget {
 
     @inject(FokkusOrchestratorServer)
     protected readonly orchestratorServer: FokkusOrchestratorServer;
-
-    @inject(WorkspaceService)
-    protected readonly workspaceService: WorkspaceService;
 
     @inject(WindowService)
     protected readonly windowService: WindowService;
@@ -1382,7 +1232,6 @@ export class FokkusSettingsWidget extends ReactWidget {
             <FokkusSettingsApp
                 preferenceService={this.preferenceService}
                 orchestratorServer={this.orchestratorServer}
-                workspaceService={this.workspaceService}
                 windowService={this.windowService}
             />
         );
@@ -1423,8 +1272,105 @@ interface FokkusChatAppProps {
     messageService: MessageService;
 }
 
+interface ApprovalContextValue {
+    resolveDecision(requestId: string): ApprovalDecision | undefined;
+    actionable: boolean;
+    decide(request: ApprovalRequest, decision: ApprovalDecision, reason?: string): void;
+}
+
+const ApprovalContext = React.createContext<ApprovalContextValue | undefined>(undefined);
+
+function ApprovalRequestCard({ raw }: { raw: string }): React.ReactElement {
+    const context = React.useContext(ApprovalContext);
+    const request = React.useMemo(() => parseApprovalRequest(raw), [raw]);
+    const [confirmingReject, setConfirmingReject] = React.useState(false);
+    const [reason, setReason] = React.useState('');
+    const [sent, setSent] = React.useState(false);
+
+    const decision = context?.resolveDecision(request.id);
+    const actionable = context?.actionable ?? false;
+
+    const handleApprove = React.useCallback(() => {
+        if (!context || sent) {
+            return;
+        }
+        setSent(true);
+        context.decide(request, 'approved');
+    }, [context, request, sent]);
+
+    const handleReject = React.useCallback(() => {
+        if (!context || sent) {
+            return;
+        }
+        setSent(true);
+        context.decide(request, 'rejected', reason.trim() || undefined);
+    }, [context, request, reason, sent]);
+
+    return (
+        <div className='fokkus-approval-card' data-risk={request.risk ?? 'media'}>
+            <div className='fokkus-approval-header'>
+                <i className='fa fa-shield' />
+                <span>Aprobación requerida</span>
+                {request.risk !== undefined && <span className='fokkus-approval-risk'>Riesgo {request.risk}</span>}
+            </div>
+            <div className='fokkus-approval-title'>{request.title}</div>
+            <div className='fokkus-approval-summary'>{request.summary}</div>
+
+            {decision === 'approved' && (
+                <div className='fokkus-approval-status fokkus-approval-status--approved'>
+                    <i className='fa fa-check-circle' />
+                    <span>Aprobado</span>
+                </div>
+            )}
+            {decision === 'rejected' && (
+                <div className='fokkus-approval-status fokkus-approval-status--rejected'>
+                    <i className='fa fa-times-circle' />
+                    <span>Rechazado</span>
+                </div>
+            )}
+            {decision === undefined && actionable && !confirmingReject && (
+                <div className='fokkus-approval-actions'>
+                    <button type='button' className='fokkus-approval-button fokkus-approval-button--approve' onClick={handleApprove} disabled={sent}>
+                        <i className='fa fa-check' />
+                        <span>Aprobar</span>
+                    </button>
+                    <button type='button' className='fokkus-approval-button fokkus-approval-button--reject' onClick={() => setConfirmingReject(true)} disabled={sent}>
+                        <i className='fa fa-times' />
+                        <span>Rechazar</span>
+                    </button>
+                </div>
+            )}
+            {decision === undefined && actionable && confirmingReject && (
+                <div className='fokkus-approval-actions'>
+                    <textarea
+                        className='fokkus-approval-reason theia-input'
+                        placeholder='Motivo del rechazo (opcional)'
+                        value={reason}
+                        onChange={event => setReason(event.target.value)}
+                        onKeyDown={event => event.stopPropagation()}
+                        autoFocus
+                    />
+                    <button type='button' className='fokkus-approval-button fokkus-approval-button--reject' onClick={handleReject} disabled={sent}>
+                        <i className='fa fa-times' />
+                        <span>Confirmar rechazo</span>
+                    </button>
+                    <button type='button' className='fokkus-approval-button fokkus-approval-button--secondary' onClick={() => setConfirmingReject(false)} disabled={sent}>
+                        Cancelar
+                    </button>
+                </div>
+            )}
+            {decision === undefined && !actionable && (
+                <div className='fokkus-approval-status fokkus-approval-status--expired'>
+                    <i className='fa fa-clock-o' />
+                    <span>Sin respuesta</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
 const CustomCodeComponent: Components['code'] = ({ inline, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || '');
+    const match = /language-([\w-]+)/.exec(className || '');
     const id = React.useMemo(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`, []);
 
     React.useEffect(() => {
@@ -1438,6 +1384,10 @@ const CustomCodeComponent: Components['code'] = ({ inline, className, children, 
             }, 100);
         }
     });
+
+    if (!inline && match && match[1] === APPROVAL_REQUEST_FENCE) {
+        return <ApprovalRequestCard raw={String(children).replace(/\n$/, '')} />;
+    }
 
     if (!inline && match && match[1] === 'mermaid') {
         return (
@@ -1453,6 +1403,14 @@ const CustomCodeComponent: Components['code'] = ({ inline, className, children, 
     );
 };
 
+// La tarjeta de aprobación no debe quedar dentro de un <pre> (heredaría fuente monoespaciada y scroll).
+const CustomPreComponent: Components['pre'] = ({ node, children, ...props }) => {
+    const first = node?.children[0];
+    const classes = first?.type === 'element' ? first.properties.className : undefined;
+    const isApproval = Array.isArray(classes) && classes.includes(`language-${APPROVAL_REQUEST_FENCE}`);
+    return isApproval ? <>{children}</> : <pre {...props}>{children}</pre>;
+};
+
 function FokkusChatApp({ preferenceService, orchestratorServer, commandService, workspaceService, subscribeExternalPrompts, messageService }: FokkusChatAppProps): React.ReactElement {
     const [messages, setMessages] = React.useState<ChatMessage[]>([{
         id: nextChatMessageId(),
@@ -1464,8 +1422,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const [stopping, setStopping] = React.useState(false);
     const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
     const [loadingText, setLoadingText] = React.useState('Procesando...');
-
-
+    const [executionMode, setExecutionMode] = React.useState<ExecutionMode>(() => readExecutionMode(preferenceService));
 
     const loadingTexts = React.useMemo(() => ['Procesando...', 'Analizando...', 'Consultando Agente...', 'Generando respuesta...'], []);
 
@@ -1484,7 +1441,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             const assignments = normalizeTeamAssignments(preferenceService.get(TEAM_PREFERENCE_KEY));
             
             const prompt = "Por favor genera un resumen en un párrafo de los requerimientos y logros técnicos que hemos alcanzado hasta ahora basándote en la conversación.";
-            const result = await orchestratorServer.dispatchToSwarm(workspacePath, prompt, 'manual', assignments, providersState, [], rolesState);
+            const result = await orchestratorServer.dispatchToSwarm(workspacePath, prompt, RAW_DISPATCH_MODE, assignments, providersState, [], rolesState);
             if (result.roleResults.some(r => r.status === 'cancelled')) {
                 return;
             }
@@ -1578,6 +1535,30 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             }
         };
     }, [orchestratorServer]);
+
+    // Mantiene el selector de modo del chat sincronizado con Settings, incluyendo la
+    // rehidratación inicial cuando el PreferenceService termina de cargar.
+    React.useEffect(() => {
+        let disposed = false;
+        let disposable: { dispose(): void } | undefined;
+        preferenceService.ready.then(() => {
+            if (disposed) {
+                return;
+            }
+            setExecutionMode(readExecutionMode(preferenceService));
+            disposable = preferenceService.onPreferenceChanged(event => {
+                if (event.preferenceName === EXECUTION_MODE_PREFERENCE_KEY) {
+                    setExecutionMode(readExecutionMode(preferenceService));
+                }
+            });
+        });
+        return () => {
+            disposed = true;
+            if (typeof disposable?.dispose === 'function') {
+                disposable.dispose();
+            }
+        };
+    }, [preferenceService]);
 
     const resizePromptInput = React.useCallback(() => {
         const el = promptInputRef.current;
@@ -1734,7 +1715,8 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             const providersState = normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY));
             const rolesState = normalizeRolesState(preferenceService.get(ROLES_PREFERENCE_KEY));
             const assignments = normalizeTeamAssignments(preferenceService.get(TEAM_PREFERENCE_KEY));
-            const result = await orchestratorServer.dispatchToSwarm(workspacePath, trimmed, 'manual', assignments, providersState, currentAttachments, rolesState);
+            const dispatchMode = readExecutionMode(preferenceService);
+            const result = await orchestratorServer.dispatchToSwarm(workspacePath, trimmed, dispatchMode, assignments, providersState, currentAttachments, rolesState);
             
 
             const resultMessages = result.roleResults.map(r => {
@@ -1816,6 +1798,13 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const dispatchingRef = React.useRef(dispatching);
     dispatchingRef.current = dispatching;
 
+    // Convierte la decisión del usuario (Aprobar/Rechazar) en el mensaje marcado que el
+    // agente espera como respuesta a fokkus_request_approval.
+    const handleApprovalDecision = React.useCallback((request: ApprovalRequest, decision: ApprovalDecision, reason?: string) => {
+        dispatchPromptRef.current(buildApprovalResponse(request, decision, reason))
+            .catch(error => console.error('[fokkus-orchestrator] No se pudo enviar la respuesta de aprobación', error));
+    }, []);
+
     // Consume los prompts que llegan desde el Kanban (u otro widget). Si el chat está
     // ocupado, el prompt se deja en el cuadro de texto y se avisa al usuario.
     const handleExternalPrompt = React.useCallback((text: string) => {
@@ -1866,16 +1855,25 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         }
     }, [dispatchPrompt]);
 
+    const contents = React.useMemo(() => messages.map(message => message.content), [messages]);
+    const activeExecutionMode = EXECUTION_MODES.find(mode => mode.id === executionMode) ?? EXECUTION_MODES[0];
+
     return (
         <div className='fokkus-chat'>
             <div className='fokkus-chat-messages' ref={element => { messagesContainerRef.current = element ?? undefined; }}>
-                {messages.map(message => (
+                {messages.map((message, index) => (
                     <div key={message.id} className={`fokkus-chat-message fokkus-chat-message--${message.role}`}>
                         <div className='fokkus-chat-bubble'>
                             <div className='fokkus-chat-markdown'>
-                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CustomCodeComponent }}>
-                                    {message.content}
-                                </ReactMarkdown>
+                                <ApprovalContext.Provider value={{
+                                    resolveDecision: requestId => resolveApprovalDecision(contents, index, requestId),
+                                    actionable: index === messages.length - 1 && message.role === 'assistant' && !dispatching,
+                                    decide: handleApprovalDecision
+                                }}>
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CustomCodeComponent, pre: CustomPreComponent }}>
+                                        {stripApprovalResponseMarkers(message.content)}
+                                    </ReactMarkdown>
+                                </ApprovalContext.Provider>
                             </div>
                         </div>
                     </div>
@@ -1893,8 +1891,18 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                     <div className={`fokkus-chat-usage-fill${progressPercent > 90 ? ' fokkus-chat-usage-fill--danger' : ''}`} style={{ width: `${progressPercent}%` }} />
                 </div>
                 <span className='fokkus-chat-usage-count'>{Math.round(currentChars/1000)}k / {MAX_CHARS/1000}k</span>
+                <button
+                    type='button'
+                    className='fokkus-chat-mode'
+                    style={{ '--fokkus-accent': activeExecutionMode.accent } as React.CSSProperties}
+                    title={`Modo de ejecución: ${activeExecutionMode.name} (clic para cambiarlo)`}
+                    onClick={openSettings}
+                >
+                    <i className={activeExecutionMode.icon} />
+                    <span className='fokkus-chat-mode-label'>{activeExecutionMode.name}</span>
+                </button>
                 <button onClick={compactChatHistory} title="Compactar historial" className='fokkus-chat-usage-compact'>
-                    <i className="fa fa-broom" />
+                    <i className="fa fa-compress" />
                     <span className='fokkus-chat-usage-label'>Compactar</span>
                 </button>
             </div>

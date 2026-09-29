@@ -12,6 +12,19 @@ import { Event } from '@theia/core/lib/common/event';
 export const FokkusOrchestratorServerPath = '/services/fokkus-orchestrator';
 export const FokkusOrchestratorServer = Symbol('FokkusOrchestratorServer');
 
+/** Modo de ejecución del chat (Settings > Workspace). */
+export type ExecutionMode = 'manual' | 'auto' | 'plan';
+export const EXECUTION_MODE_IDS: readonly ExecutionMode[] = ['manual', 'auto', 'plan'];
+export const DEFAULT_EXECUTION_MODE: ExecutionMode = 'manual';
+/** Modo para dispatches internos (p. ej. compactar historial): sin directiva de modo ni tool de aprobación. */
+export const RAW_DISPATCH_MODE = 'raw';
+export type DispatchMode = ExecutionMode | typeof RAW_DISPATCH_MODE;
+/** Lenguaje del bloque de código con el que un agente invoca la tool de aprobación. */
+export const APPROVAL_REQUEST_FENCE = 'fokkus-approval';
+export function isExecutionMode(value: unknown): value is ExecutionMode {
+    return typeof value === 'string' && (EXECUTION_MODE_IDS as readonly string[]).includes(value);
+}
+
 export interface DynamicProvider {
     id: string;
     name: string;
@@ -83,11 +96,11 @@ export interface DesktopEnvironment {
 }
 
 export interface FokkusOrchestratorServer {
-    executeTask(task: string): Promise<string>;
-    getWorkspaceDiff(workspacePath: string): Promise<string>;
-    approveDiff(workspacePath: string): Promise<void>;
-    rejectDiff(workspacePath: string): Promise<void>;
-    dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult>;
+    /** Despacha el prompt al enjambre con un modo de ejecución concreto (o `raw` para dispatches internos sin directiva ni tool de aprobación). */
+    dispatchToSwarm(
+        workspacePath: string, prompt: string, mode: DispatchMode, team: TeamAssignments, providers: ProvidersState,
+        attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]
+    ): Promise<SwarmDispatchResult>;
     /** Stops the in-flight agent process(es); no-op if none are running. */
     cancelDispatch(): Promise<void>;
     addProvider(provider: DynamicProvider): Promise<void>;

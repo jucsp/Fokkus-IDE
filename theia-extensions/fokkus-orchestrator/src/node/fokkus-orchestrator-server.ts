@@ -17,11 +17,14 @@ import { Emitter, Event } from '@theia/core/lib/common/event';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { WorkspaceServer } from '@theia/workspace/lib/common';
 import {
+    APPROVAL_REQUEST_FENCE,
     ChatAttachment,
     ChatMessage,
     DesktopEnvironment,
+    DispatchMode,
     DynamicProvider,
     DynamicRole,
+    ExecutionMode,
     FokkusOrchestratorServer,
     ProvidersState,
     RolesState,
@@ -29,7 +32,8 @@ import {
     SwarmDispatchResult,
     SwarmEdge,
     TeamAssignments,
-    TeamConfiguration
+    TeamConfiguration,
+    isExecutionMode
 } from '../common/fokkus-orchestrator-protocol';
 
 const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm)
@@ -91,28 +95,10 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     protected cancelRequested = false;
     protected dispatchesInFlight = 0;
 
-    async executeTask(task: string): Promise<string> {
-        // Fase 4 (infraestructura base): responde con un pong de verificación.
-        // La ejecución real de agentes se implementará sobre esta interfaz.
-        return `pong: ${task}`;
-    }
-
-    async getWorkspaceDiff(workspacePath: string): Promise<string> {
-        const cwd = await this.getEffectiveCwd(workspacePath);
-        return this.runStreamingCommand('git diff', cwd);
-    }
-
-    async approveDiff(workspacePath: string): Promise<void> {
-        const cwd = await this.getEffectiveCwd(workspacePath);
-        await this.runStreamingCommand('git add . && git commit -m "Aprobado vía Fokkus Swarm"', cwd);
-    }
-
-    async rejectDiff(workspacePath: string): Promise<void> {
-        const cwd = await this.getEffectiveCwd(workspacePath);
-        await this.runStreamingCommand('git reset --hard && git clean -fd', cwd);
-    }
-
-    async dispatchToSwarm(workspacePath: string, prompt: string, mode: string, team: TeamAssignments, providers: ProvidersState, attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]): Promise<SwarmDispatchResult> {
+    async dispatchToSwarm(
+        workspacePath: string, prompt: string, mode: DispatchMode, team: TeamAssignments, providers: ProvidersState,
+        attachments?: ChatAttachment[], roles?: RolesState, edges?: SwarmEdge[]
+    ): Promise<SwarmDispatchResult> {
         this.cancelRequested = false;
         this.dispatchesInFlight++;
         try {
@@ -126,7 +112,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     private async doDispatchToSwarm(
         workspacePath: string,
         prompt: string,
-        mode: string,
+        mode: DispatchMode,
         team: TeamAssignments,
         providers: ProvidersState,
         attachments?: ChatAttachment[],
@@ -162,6 +148,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         const roleResults: SwarmAgentResult[] = [];
 
         const teamEnvs: NodeJS.ProcessEnv = { ...process.env };
+        await this.applyAgentGitEnvironment(teamEnvs);
         let poProvider: DynamicProvider | undefined;
         let poRoleId = '';
 
@@ -311,16 +298,101 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         return {};
     }
 
-    private buildAgentPrompt(prompt: string, mode: string): string {
-        if (mode === 'plan') {
-            return [
-                'Modo planificación: NO modifiques ningún archivo del workspace.',
-                'Produce únicamente un plan detallado en Markdown con los pasos, archivos afectados y decisiones de diseño.',
-                '',
-                `Instrucción: ${prompt}`
-            ].join('\n');
+    /** Expone el token de la integración GitHub a los agentes y evita que git abra diálogos de credenciales. */
+    private async applyAgentGitEnvironment(env: NodeJS.ProcessEnv): Promise<void> {
+        let token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+        if (!token) {
+            const githubConfigPath = join(os.homedir(), '.fokkus', 'github.json');
+            try {
+                const raw = await fs.readFile(githubConfigPath, 'utf8');
+                const parsed: unknown = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    const candidate = (parsed as { token?: unknown }).token;
+                    if (typeof candidate === 'string') {
+                        token = candidate.trim();
+                    }
+                }
+            } catch {
+                // No existe el archivo o no es JSON válido: se continúa sin token.
+            }
         }
-        return prompt;
+        if (token) {
+            env.GITHUB_TOKEN = token;
+            env.GH_TOKEN = token;
+        }
+        env.GIT_TERMINAL_PROMPT = '0';
+        env.GIT_ASKPASS = '';
+        env.SSH_ASKPASS = '';
+        env.GCM_INTERACTIVE = 'never';
+    }
+
+    /**
+     * Convierte el modo de ejecución elegido en una directiva crítica inyectada en
+     * el prompt del agente líder. Devuelve `undefined` para `raw` o valores inválidos.
+     */
+    private buildExecutionModeDirective(mode: string): string | undefined {
+        if (!isExecutionMode(mode)) {
+            return undefined;
+        }
+        const directives: Record<ExecutionMode, { name: string; content: string[] }> = {
+            manual: {
+                name: 'Manual',
+                content: [
+                    'Eres el agente líder. Debes solicitar la aprobación del usuario con la herramienta fokkus_request_approval',
+                    'ANTES de cada interacción del equipo con el código:',
+                    'primero para aprobar el plan de implementación (pídeselo al PM si existe en el equipo) y después ANTES de cada cambio crítico',
+                    '(escritura/edición/borrado de archivos, commits, instalación de dependencias, migraciones, comandos con efectos).',
+                    'Puedes leer e investigar sin pedir permiso.',
+                    'Una aprobación cubre SOLO la operación descrita en esa solicitud; el siguiente cambio crítico requiere una nueva.',
+                    'Si el usuario rechaza, no ejecutes la operación: explica alternativas y espera instrucciones.'
+                ]
+            },
+            auto: {
+                name: 'Automático',
+                content: [
+                    'Pide al PM (rol de gestión/QA del equipo, si existe) que genere un plan de implementación basado en el estado actual del proyecto y en lo solicitado,',
+                    'y delega las tareas a cada área del equipo según la etapa correspondiente, sin detenerte a pedir aprobación.',
+                    'Usa fokkus_request_approval SOLO ante operaciones irreversibles o destructivas',
+                    '(borrado masivo, git push, reescritura de historial, cambios en producción, secretos).'
+                ]
+            },
+            plan: {
+                name: 'Plan de implementación',
+                content: [
+                    'Pide al PM un plan de implementación y, antes de tocar cualquier archivo, somételo al usuario con fokkus_request_approval',
+                    '(resume el plan en `summary`; el plan completo va en tu respuesta, antes del bloque).',
+                    'Si el historial contiene una respuesta de aprobación (marcador fokkus-approval-response con decision="approved") para el plan vigente,',
+                    'el equipo tiene pase libre: ejecuta todo el plan sin más interrupciones ni consultas.',
+                    'Si el usuario lo rechazó (decision="rejected"), corta el flujo: no modifiques nada, pregunta qué cambiar e itera el plan con el usuario.'
+                ]
+            }
+        };
+        const directive = directives[mode];
+        return [
+            `[MODO DE EJECUCIÓN: ${directive.name} — INSTRUCCIÓN CRÍTICA]`,
+            ...directive.content
+        ].join('\n');
+    }
+
+    /** Explica al agente el protocolo exacto de la tool fokkus_request_approval. */
+    private buildApprovalToolSection(): string {
+        return [
+            '[HERRAMIENTA DISPONIBLE: fokkus_request_approval]',
+            'Para invocarla, termina tu respuesta con UN único bloque de código markdown cuyo lenguaje sea ' + APPROVAL_REQUEST_FENCE + ',',
+            'que contenga SOLO un objeto JSON (en una línea o varias) con esta forma:',
+            '{"id": "<identificador corto único, p. ej. plan-1>", "title": "<qué se aprueba, máx. 80 caracteres>",'
+                + ' "summary": "<qué harás y qué archivos o sistemas afecta>", "risk": "baja|media|alta"}',
+            'Ejemplo literal completo del bloque:',
+            '```' + APPROVAL_REQUEST_FENCE,
+            '{"id": "plan-1", "title": "Aprobar plan de implementación", "summary": "Voy a crear el servicio X y a modificar Y para implementar la historia.", "risk": "media"}',
+            '```',
+            'Tras el bloque, DETÉN tu ejecución en ese mismo turno: no ejecutes la operación ni escribas nada más.',
+            'El chat mostrará al usuario los botones Aprobar/Rechazar.',
+            'La respuesta del usuario llegará en el siguiente mensaje con el marcador',
+            '<!-- fokkus-approval-response id="<id>" decision="approved|rejected" --> y, si rechaza, un motivo opcional.',
+            'Solo "approved" autoriza la operación.',
+            'Máximo una solicitud por respuesta. No inventes respuestas del usuario ni asumas aprobación.'
+        ].join('\n');
     }
 
     /**
@@ -402,7 +474,12 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             `3° El Proyecto en sí: lee e investiga el código fuente real del workspace. Si es necesario, delega en los agentes del equipo (sub-agentes) para tareas específicas.`
         );
 
-        sections.push(this.buildAgentPrompt(prompt, mode));
+        const modeDirective = this.buildExecutionModeDirective(mode);
+        if (modeDirective) {
+            sections.push(modeDirective);
+            sections.push(this.buildApprovalToolSection());
+        }
+        sections.push(`[INSTRUCCIÓN DEL USUARIO]\n${prompt}`);
 
         sections.push(
             `[DIRECTIVA CRÍTICA DE AISLAMIENTO]\n` +
@@ -514,9 +591,17 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         runEnv: NodeJS.ProcessEnv
     ): Promise<SwarmAgentResult> {
         const wslEnv = { ...runEnv };
-        wslEnv.WSLENV = wslEnv.WSLENV
-            ? (wslEnv.WSLENV.includes('FOKKUS_SAFE_PROMPT') ? wslEnv.WSLENV : `${wslEnv.WSLENV}:FOKKUS_SAFE_PROMPT/u`)
-            : 'FOKKUS_SAFE_PROMPT/u';
+        // WSLENV solo reenvía a la distro las variables listadas: el prompt, el token de
+        // GitHub y los flags que impiden a git abrir diálogos de credenciales.
+        const forwarded = ['FOKKUS_SAFE_PROMPT', 'GITHUB_TOKEN', 'GH_TOKEN', 'GIT_TERMINAL_PROMPT', 'GIT_ASKPASS', 'SSH_ASKPASS', 'GCM_INTERACTIVE']
+            .filter(name => wslEnv[name] !== undefined);
+        const wslEnvEntries = (wslEnv.WSLENV ?? '').split(':').filter(entry => entry.length > 0);
+        for (const name of forwarded) {
+            if (!wslEnvEntries.some(entry => entry.split('/')[0] === name)) {
+                wslEnvEntries.push(`${name}/u`);
+            }
+        }
+        wslEnv.WSLENV = wslEnvEntries.join(':');
         const output = await this.runStreamingProcess(
             'wsl.exe',
             ['-d', distro, '--cd', linuxPath, '--', 'bash', '-lc', command],

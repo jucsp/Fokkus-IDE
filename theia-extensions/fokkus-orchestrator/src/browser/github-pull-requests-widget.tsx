@@ -115,10 +115,27 @@ export function buildPullRequestReviewPrompt(repo: string, pr: GitHubPullRequest
         + `Autor: ${pr.author}. Rama: ${pr.headRef} → ${pr.baseRef}. Estado: ${stateLabel}. URL: ${pr.htmlUrl}\n`
         + `Descripción: ${description}\n`
         + `Archivos modificados (${files.length}):\n${fileList}\n\n`
-        + 'INSTRUCCIÓN: Obtén el diff completo del PR (por ejemplo '
-        + `\`git fetch https://github.com/${repo}.git +refs/heads/${pr.baseRef}:refs/fokkus/pr-${pr.number}-base +refs/pull/${pr.number}/head:refs/fokkus/pr-${pr.number}\` `
-        + `y \`git diff refs/fokkus/pr-${pr.number}-base...refs/fokkus/pr-${pr.number}\`) y realiza un code review exhaustivo: `
-        + 'bugs y errores de lógica, seguridad, rendimiento, legibilidad y cobertura de pruebas. Entrega: '
+        + 'INSTRUCCIÓN: Obtén el diff completo del PR y realiza un code review exhaustivo: '
+        + 'bugs y errores de lógica, seguridad, rendimiento, legibilidad y cobertura de pruebas.\n\n'
+        + 'Cómo obtener el diff:\n'
+        + '1) El entorno ya expone la variable $GITHUB_TOKEN con el token de la integración GitHub del IDE. '
+        + 'Úsala siempre por referencia ("$GITHUB_TOKEN"): nunca imprimas, copies ni registres su valor.\n'
+        + '2) Método preferido — diff por la API REST (sin git ni credenciales interactivas):\n'
+        + '`curl -sSfL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3.diff" '
+        + `https://api.github.com/repos/${repo}/pulls/${pr.number}\`\n`
+        + '3) Si el diff es demasiado grande (la API responde 406/422), usa la lista de archivos con sus parches:\n'
+        + '`curl -sSfL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" '
+        + `"https://api.github.com/repos/${repo}/pulls/${pr.number}/files?per_page=100&page=1"\` `
+        + '(paginando page=2, page=3, …).\n'
+        + '4) Solo si necesitas el código completo: git fetch con el token embebido en la URL de esa única orden, '
+        + 'sin añadir remotes ni guardarla en la config:\n'
+        + `\`git -c credential.helper= fetch "https://x-access-token:$GITHUB_TOKEN@github.com/${repo}.git" `
+        + `+refs/heads/${pr.baseRef}:refs/fokkus/pr-${pr.number}-base +refs/pull/${pr.number}/head:refs/fokkus/pr-${pr.number}\` `
+        + `y luego \`git diff refs/fokkus/pr-${pr.number}-base...refs/fokkus/pr-${pr.number}\`.\n`
+        + '5) Si $GITHUB_TOKEN está vacío, repite las mismas llamadas curl SIN la cabecera Authorization '
+        + '(solo sirve para repos públicos). Nunca uses comandos que pidan usuario/contraseña de forma interactiva; '
+        + 'si una orden pide credenciales, abórtala y usa la API.\n\n'
+        + 'Entrega: '
         + '1) resumen del cambio, 2) hallazgos ordenados por severidad con archivo:línea y sugerencia concreta, '
         + '3) resumen de riesgos y recomendaciones. NO apruebes ni rechaces el PR: tu rol es solo revisar y dar feedback. '
         + 'No modifiques archivos, no hagas commits ni publiques comentarios en GitHub: entrega el feedback solo en este chat.';

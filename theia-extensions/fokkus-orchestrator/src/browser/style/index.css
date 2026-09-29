@@ -626,55 +626,6 @@
     box-shadow: 0 12px 26px -10px color-mix(in srgb, var(--fokkus-accent) 85%, transparent);
 }
 
-/* Execution probe (Motor de Ejecución) */
-.fokkus-execution-probe {
-    margin-top: 18px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.fokkus-probe-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(56, 189, 248, 0.85));
-    color: #fff;
-    font-family: var(--theia-ui-font-family);
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 8px 20px -10px rgba(59, 130, 246, 0.7);
-    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.fokkus-probe-button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 12px 26px -10px rgba(59, 130, 246, 0.85);
-}
-
-.fokkus-probe-button:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.fokkus-probe-result {
-    font-size: 0.78rem;
-    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
-    padding: 7px 10px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* Execution modes */
 .fokkus-mode-grid {
     display: grid;
@@ -774,188 +725,6 @@
     font-size: 0.72rem;
     line-height: 1.4;
     color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
-}
-
-/* Diff viewer */
-.fokkus-diff-viewer {
-    border-radius: 14px;
-    overflow: hidden;
-    background: rgba(0, 0, 0, 0.22);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    margin-bottom: 20px;
-}
-
-.fokkus-diff-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 0.78rem;
-    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
-}
-
-.fokkus-diff-filename {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-family: var(--theia-code-font-family, monospace);
-    color: var(--theia-foreground);
-}
-
-.fokkus-diff-stats {
-    flex: 0 0 auto;
-    display: flex;
-    gap: 8px;
-    font-family: var(--theia-code-font-family, monospace);
-    font-weight: 600;
-}
-
-.fokkus-diff-stat--add {
-    color: #3fb950;
-}
-
-.fokkus-diff-stat--remove {
-    color: #f85149;
-}
-
-.fokkus-diff-body {
-    padding: 6px 0;
-    font-family: var(--theia-code-font-family, monospace);
-    font-size: 0.78rem;
-    line-height: 1.65;
-    overflow-x: auto;
-}
-
-.fokkus-diff-line {
-    display: flex;
-    padding: 0 14px;
-}
-
-.fokkus-diff-gutter {
-    flex: 0 0 20px;
-    text-align: center;
-    user-select: none;
-    opacity: 0.8;
-}
-
-.fokkus-diff-content {
-    white-space: pre;
-    flex: 1 1 auto;
-}
-
-.fokkus-diff-line--add {
-    background: rgba(63, 185, 80, 0.14);
-    color: #b4f0bf;
-}
-
-.fokkus-diff-line--add .fokkus-diff-gutter {
-    color: #3fb950;
-}
-
-.fokkus-diff-line--remove {
-    background: rgba(248, 81, 73, 0.14);
-    color: #ffc1bd;
-}
-
-.fokkus-diff-line--remove .fokkus-diff-gutter {
-    color: #f85149;
-}
-
-.fokkus-diff-line--context {
-    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
-}
-
-/* Decision bar */
-.fokkus-decision-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.fokkus-decision-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    padding: 12px 22px;
-    border-radius: 12px;
-    border: 1px solid transparent;
-    font-family: var(--theia-ui-font-family);
-    font-size: 0.86rem;
-    font-weight: 700;
-    letter-spacing: 0.2px;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.fokkus-decision-button--approve {
-    color: #fff;
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    box-shadow: 0 10px 26px -12px rgba(34, 197, 94, 0.75);
-}
-
-.fokkus-decision-button--approve:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 32px -12px rgba(34, 197, 94, 0.9);
-}
-
-.fokkus-decision-button--reject {
-    color: #fff;
-    background: linear-gradient(135deg, #f87171, #dc2626);
-    box-shadow: 0 10px 26px -12px rgba(220, 38, 38, 0.75);
-}
-
-.fokkus-decision-button--reject:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 14px 32px -12px rgba(220, 38, 38, 0.9);
-}
-
-.fokkus-decision-result {
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.fokkus-decision-result--approved {
-    color: #4ade80;
-    border-color: rgba(74, 222, 128, 0.35);
-}
-
-.fokkus-decision-result--rejected {
-    color: #f87171;
-    border-color: rgba(248, 113, 113, 0.35);
-}
-
-/* Diff empty / loading states */
-.fokkus-diff-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 24px 14px;
-    font-size: 0.78rem;
-    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.7));
-    text-align: center;
-}
-
-.fokkus-diff-empty--error {
-    color: #f87171;
-}
-
-.fokkus-decision-button:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
 }
 
 /* Prompt input bar */
@@ -1747,4 +1516,164 @@
 
 .fokkus-help-warning .fa {
     color: #fbbf24;
+}
+
+/* Execution mode chip (chat) */
+.fokkus-chat-mode {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--fokkus-accent);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.8em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.fokkus-chat-mode .fa {
+    color: var(--fokkus-accent);
+}
+
+.fokkus-chat-mode:hover {
+    background: var(--theia-toolbar-hoverBackground);
+}
+
+.fokkus-chat-mode-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+/* Approval request card */
+.fokkus-approval-card {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--theia-panel-border);
+    border-left: 3px solid #f59e0b;
+    border-radius: 6px;
+    background: var(--theia-editor-background);
+    font-family: var(--theia-ui-font-family);
+}
+
+.fokkus-approval-card[data-risk='baja'] {
+    border-left-color: #10c48c;
+}
+
+.fokkus-approval-card[data-risk='media'] {
+    border-left-color: #f59e0b;
+}
+
+.fokkus-approval-card[data-risk='alta'] {
+    border-left-color: #f87171;
+}
+
+.fokkus-approval-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.fokkus-approval-header .fa-shield {
+    color: var(--fokkus-accent, #3b82f6);
+}
+
+.fokkus-approval-risk {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--theia-panel-border);
+}
+
+.fokkus-approval-title {
+    font-weight: 600;
+    margin: 6px 0 4px;
+}
+
+.fokkus-approval-summary {
+    white-space: pre-wrap;
+    color: var(--theia-descriptionForeground);
+    font-size: 0.9em;
+}
+
+.fokkus-approval-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.fokkus-approval-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #fff;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.85em;
+    font-weight: 600;
+}
+
+.fokkus-approval-button--approve {
+    background: #10a37f;
+}
+
+.fokkus-approval-button--reject {
+    background: #d9534f;
+}
+
+.fokkus-approval-button--secondary {
+    background: transparent;
+    border: 1px solid var(--theia-button-secondaryBackground, #555);
+    color: var(--theia-foreground);
+}
+
+.fokkus-approval-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.fokkus-approval-reason {
+    width: 100%;
+    min-height: 48px;
+    margin-top: 8px;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.fokkus-approval-status {
+    margin-top: 10px;
+    font-size: 0.85em;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.fokkus-approval-status--approved {
+    color: #10c48c;
+}
+
+.fokkus-approval-status--rejected {
+    color: #f87171;
+}
+
+.fokkus-approval-status--expired {
+    color: var(--theia-descriptionForeground);
 }

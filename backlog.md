@@ -38,7 +38,12 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #11 Agregar botón de papelera para borrar agentes desde el grafo visualmente.
 - [x] #7 Implementar actualización desde el IDE (detectar nuevo release y notificar mediante popup).
 - [ ] #6 Implementar integración con Bitbucket (mediante token o OAuth deseable).
-- [ ] #4 Implementar integración con Github (mediante token o OAuth deseable).
+- [x] #4 Implementar integración con Github (mediante token o OAuth deseable).
+  - _Mejora v1.3.0/v1.3.2:_ Se agregó soporte nativo en el panel Source Control para PULL REQUESTS. Filtros por repo, revisión por agentes sin aprobación directa, y despliegue global de PRs.
+- [x] #21 Mejora: Usar token de integración de GitHub para auditar Pull Requests en lugar de git fetch plano (evitar prompt de credenciales).
+  - _Fix v1.4.0:_ el prompt de «Pedir revisión a agentes» obtiene el diff por la API REST con `$GITHUB_TOKEN` (y `git fetch` con `x-access-token` solo si hace falta el código completo). Los agentes reciben `GITHUB_TOKEN`/`GH_TOKEN` (env o `~/.fokkus/github.json`) y git corre con `GIT_TERMINAL_PROMPT=0` y askpass vacío: nunca abre KWallet/askpass.
+- [x] #20 Refactor de Workspace Settings y Tool de Aprobación Interactiva en Chat (Manual, Automático, Plan).
+  - _v1.4.0:_ el modo (Manual / Automático / Plan de implementación) se persiste y se inyecta como instrucción crítica en cada dispatch; se eliminó el Workspace Tree (diff + Approve/Reject + Ejecutar Prueba); nueva tool `fokkus_request_approval` con tarjeta Aprobar/Rechazar dentro del chat.
 - [x] #3 En Providers, agregar helper que de ayuda de como integrar proveedores (Gemini, Claude, GPT, DeepSeek).
   - _Fix v1.0.7:_ botón «Ayuda» en Settings > Providers que abre un panel con una guía por proveedor (Claude, Gemini, OpenAI, DeepSeek, Ollama): dónde crear la API Key, Base URL compatible con OpenAI y modelos de ejemplo. Los links se abren en el navegador del sistema y «Usar esta configuración» rellena el formulario de alta.
 

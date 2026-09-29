@@ -35,6 +35,7 @@ import {
     TeamConfiguration,
     isExecutionMode
 } from '../common/fokkus-orchestrator-protocol';
+import { resolveApprovalState as computeApprovalState, ResolvedApprovalState } from '../common/fokkus-approval';
 
 const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm)
 
@@ -327,50 +328,146 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     /**
-     * Convierte el modo de ejecución elegido en una directiva crítica inyectada en
-     * el prompt del agente líder. Devuelve `undefined` para `raw` o valores inválidos.
+     * Resuelve el estado de la última solicitud de aprobación a partir del
+     * historial del chat. Método privado y puro (sin efectos secundarios): delega
+     * en la función compartida de `common/` para poder testearla con node.
      */
-    private buildExecutionModeDirective(mode: string): string | undefined {
+    private resolveApprovalState(history: ChatMessage[]): ResolvedApprovalState {
+        return computeApprovalState(history);
+    }
+
+    /**
+     * Convierte el modo de ejecución elegido en una directiva crítica inyectada al
+     * FINAL del prompt del agente líder. La directiva incluye una FASE explícita
+     * derivada del estado de aprobación (HU-1). Devuelve `undefined` para `raw` o
+     * valores inválidos.
+     */
+    private buildExecutionModeDirective(mode: string, approval: ResolvedApprovalState): string | undefined {
         if (!isExecutionMode(mode)) {
             return undefined;
         }
-        const directives: Record<ExecutionMode, { name: string; content: string[] }> = {
-            manual: {
-                name: 'Manual',
-                content: [
-                    'Eres el agente líder. Debes solicitar la aprobación del usuario con la herramienta fokkus_request_approval',
-                    'ANTES de cada interacción del equipo con el código:',
-                    'primero para aprobar el plan de implementación (pídeselo al PM si existe en el equipo) y después ANTES de cada cambio crítico',
-                    '(escritura/edición/borrado de archivos, commits, instalación de dependencias, migraciones, comandos con efectos).',
-                    'Puedes leer e investigar sin pedir permiso.',
-                    'Una aprobación cubre SOLO la operación descrita en esa solicitud; el siguiente cambio crítico requiere una nueva.',
-                    'Si el usuario rechaza, no ejecutes la operación: explica alternativas y espera instrucciones.'
-                ]
-            },
-            auto: {
-                name: 'Automático',
-                content: [
-                    'Pide al PM (rol de gestión/QA del equipo, si existe) que genere un plan de implementación basado en el estado actual del proyecto y en lo solicitado,',
-                    'y delega las tareas a cada área del equipo según la etapa correspondiente, sin detenerte a pedir aprobación.',
-                    'Usa fokkus_request_approval SOLO ante operaciones irreversibles o destructivas',
-                    '(borrado masivo, git push, reescritura de historial, cambios en producción, secretos).'
-                ]
-            },
-            plan: {
-                name: 'Plan de implementación',
-                content: [
-                    'Pide al PM un plan de implementación y, antes de tocar cualquier archivo, somételo al usuario con fokkus_request_approval',
-                    '(resume el plan en `summary`; el plan completo va en tu respuesta, antes del bloque).',
-                    'Si el historial contiene una respuesta de aprobación (marcador fokkus-approval-response con decision="approved") para el plan vigente,',
-                    'el equipo tiene pase libre: ejecuta todo el plan sin más interrupciones ni consultas.',
-                    'Si el usuario lo rechazó (decision="rejected"), corta el flujo: no modifiques nada, pregunta qué cambiar e itera el plan con el usuario.'
-                ]
-            }
+        const names: Record<ExecutionMode, string> = {
+            manual: 'Manual',
+            auto: 'Automático',
+            plan: 'Plan de implementación'
         };
-        const directive = directives[mode];
+        const header = `[MODO DE EJECUCIÓN: ${names[mode]} — INSTRUCCIÓN CRÍTICA]`;
+        let body: string;
+        if (mode === 'plan') {
+            body = approval.status === 'approved'
+                ? this.buildPlanExecutionPhase(approval)
+                : this.buildPlanPlanningPhase();
+        } else if (mode === 'manual') {
+            body = approval.status === 'approved'
+                ? this.buildManualExecutionPhase(approval)
+                : this.buildManualPlanningPhase();
+        } else {
+            body = this.buildAutoDirectiveBody();
+        }
+        return `${header}\n${body}`;
+    }
+
+    /** Reglas obligatorias de la FASE 1 (planificación en primer plano, solo lectura). */
+    private buildReadOnlyRules(): string[] {
         return [
-            `[MODO DE EJECUCIÓN: ${directive.name} — INSTRUCCIÓN CRÍTICA]`,
-            ...directive.content
+            'Investiga el proyecto EN PRIMER PLANO y SOLO con lectura: lee archivos y ejecuta únicamente comandos de lectura',
+            '(cat, ls, git status/log/diff --stat, grep, etc.).',
+            'PROHIBIDO en este turno: lanzar sub-agentes, tareas en segundo plano, procesos que no terminan, servidores, watchers',
+            'o scripts de delegación a otros agentes (p. ej. deepseek_task.py, ollama_task.py).',
+            'PROHIBIDO escribir, editar o borrar archivos; PROHIBIDO commits, instalaciones, migraciones o comandos con efectos.'
+        ];
+    }
+
+    /** FASE 1 del modo Plan: el PO redacta el plan en primer plano y pide aprobación. */
+    private buildPlanPlanningPhase(): string {
+        return [
+            'FASE 1: PLANIFICACIÓN (turno de solo lectura). Eres el agente líder (Product Owner).',
+            ...this.buildReadOnlyRules(),
+            'Redacta TÚ MISMO el plan de implementación actuando como PM: objetivo, pasos, archivos afectados y riesgos.',
+            'La delegación al equipo (sub-agentes) ocurre SOLO en la FASE 2, después de la aprobación.',
+            `Tu respuesta DEBE terminar con el bloque \`\`\`${APPROVAL_REQUEST_FENCE} (invoca fokkus_request_approval) y terminar el turno inmediatamente, sin ejecutar nada más.`,
+            'Si el historial muestra un rechazo previo (decision="rejected"), incorpora el motivo del usuario, itera el plan',
+            'y emite un bloque con un id NUEVO (p. ej. plan-2, plan-3...).'
+        ].join('\n');
+    }
+
+    /** FASE 2 del modo Plan: ejecutar el plan ya aprobado sin volver a pedir aprobación. */
+    private buildPlanExecutionPhase(approval: ResolvedApprovalState): string {
+        const approvedId = approval.id ? ` (id "${approval.id}")` : '';
+        return [
+            `FASE 2: EJECUCIÓN. El plan${approvedId} ha sido APROBADO por el usuario.`,
+            'Ejecuta el plan completo aprobado y delega las tareas al equipo (sub-agentes) según la etapa correspondiente.',
+            'No vuelvas a pedir aprobación para lo que ya está aprobado en el plan.',
+            'No emitas bloques de aprobación salvo para una operación irreversible que NO esté contemplada en el plan.',
+            'Espera y deja terminar TODAS las tareas antes de cerrar el turno: no dejes tareas en segundo plano vivas.',
+            'Entrega un resumen final del trabajo realizado.'
+        ].join('\n');
+    }
+
+    /** FASE 1 del modo Manual: pedir aprobación del plan sin delegar en segundo plano. */
+    private buildManualPlanningPhase(): string {
+        return [
+            'FASE 1: PLANIFICACIÓN (turno de solo lectura). Eres el agente líder.',
+            ...this.buildReadOnlyRules(),
+            'Redacta TÚ MISMO el plan de implementación actuando como PM: objetivo, pasos, archivos afectados y riesgos.',
+            `Tu respuesta DEBE terminar con el bloque \`\`\`${APPROVAL_REQUEST_FENCE} (invoca fokkus_request_approval) y terminar el turno inmediatamente, sin ejecutar nada más.`,
+            'Si el historial muestra un rechazo previo (decision="rejected"), incorpora el motivo del usuario, itera el plan',
+            'y emite un bloque con un id NUEVO (p. ej. plan-2, plan-3...).'
+        ].join('\n');
+    }
+
+    /** FASE 2 del modo Manual: ejecutar solo lo aprobado y pedir aprobación antes de cada cambio crítico. */
+    private buildManualExecutionPhase(approval: ResolvedApprovalState): string {
+        const approvedId = approval.id ? ` (id "${approval.id}")` : '';
+        return [
+            `FASE 2: EJECUCIÓN. Tu plan${approvedId} ha sido APROBADO por el usuario.`,
+            'Ejecuta SOLO lo aprobado en el plan: no amplíes el alcance sin consultar.',
+            'ANTES de cada siguiente cambio crítico (escritura/edición/borrado de archivos, commits, instalaciones,',
+            'migraciones, comandos con efectos), solicita una NUEVA aprobación con fokkus_request_approval y detente hasta recibirla.',
+            'Puedes leer e investigar sin pedir permiso.',
+            'Espera y deja terminar TODAS las tareas antes de cerrar el turno: no dejes tareas en segundo plano vivas.'
+        ].join('\n');
+    }
+
+    /** Cuerpo del modo Automático: sin cambio de comportamiento, salvo no dejar tareas vivas. */
+    private buildAutoDirectiveBody(): string {
+        return [
+            'Genera un plan de implementación basado en el estado actual del proyecto y en lo solicitado,',
+            'y delega las tareas a cada área del equipo según la etapa correspondiente, sin detenerte a pedir aprobación.',
+            'Usa fokkus_request_approval SOLO ante operaciones irreversibles o destructivas',
+            '(borrado masivo, git push, reescritura de historial, cambios en producción, secretos).',
+            'Espera y deja terminar TODAS las tareas antes de cerrar el turno: no dejes tareas en segundo plano vivas.',
+            'Entrega un resumen final del trabajo realizado.'
+        ].join('\n');
+    }
+
+    /**
+     * Recordatorio corto (2-3 líneas) que cierra el prompt repitiendo la regla
+     * crítica de la fase actual (estructura "sandwich" con la directiva de modo).
+     */
+    private buildPhaseReminder(mode: string, approval: ResolvedApprovalState): string | undefined {
+        if (!isExecutionMode(mode)) {
+            return undefined;
+        }
+        if (mode === 'auto') {
+            return [
+                '[RECORDATORIO DE MODO]',
+                'No dejes tareas en segundo plano vivas al terminar y usa fokkus_request_approval solo ante operaciones irreversibles.'
+            ].join('\n');
+        }
+        if (approval.status === 'approved') {
+            const base = mode === 'plan'
+                ? 'El plan está aprobado: ejecútalo sin volver a pedir aprobación'
+                : 'Ejecuta solo lo aprobado y pide una nueva aprobación antes de cada siguiente cambio crítico';
+            return [
+                '[RECORDATORIO DE FASE]',
+                `${base}; espera a que terminen todas las tareas y no dejes procesos en segundo plano vivos.`
+            ].join('\n');
+        }
+        return [
+            '[RECORDATORIO DE FASE]',
+            'Estás en FASE 1 (solo lectura): no lances sub-agentes ni tareas en segundo plano, no modifiques archivos',
+            'y termina tu respuesta con el bloque ```' + APPROVAL_REQUEST_FENCE + '.'
         ].join('\n');
     }
 
@@ -474,11 +571,6 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             `3° El Proyecto en sí: lee e investiga el código fuente real del workspace. Si es necesario, delega en los agentes del equipo (sub-agentes) para tareas específicas.`
         );
 
-        const modeDirective = this.buildExecutionModeDirective(mode);
-        if (modeDirective) {
-            sections.push(modeDirective);
-            sections.push(this.buildApprovalToolSection());
-        }
         sections.push(`[INSTRUCCIÓN DEL USUARIO]\n${prompt}`);
 
         sections.push(
@@ -486,6 +578,17 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             `Eres estrictamente el Agente Asignado para este proyecto. Tu objetivo es ayudar a desarrollar el código del proyecto activo.\n` +
             `BAJO NINGUNA CIRCUNSTANCIA debes hablar sobre tu propia arquitectura de agentes, configuración interna de Fokkus IDE, variables de entorno FOKKUS_TEAM_ o diagnosticar el Swarm, a menos que el usuario te lo pida EXPLÍCITAMENTE. Mantén siempre el rol y la inmersión en el proyecto.`
         );
+
+        const approvalState = this.resolveApprovalState(chatHistory);
+        const modeDirective = this.buildExecutionModeDirective(mode, approvalState);
+        if (modeDirective) {
+            sections.push(modeDirective);
+            sections.push(this.buildApprovalToolSection());
+            const reminder = this.buildPhaseReminder(mode, approvalState);
+            if (reminder) {
+                sections.push(reminder);
+            }
+        }
 
         return sections.join('\n\n');
     }

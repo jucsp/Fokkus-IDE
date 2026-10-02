@@ -37,6 +37,7 @@ import {
 } from '../common/fokkus-orchestrator-protocol';
 import { resolveApprovalState as computeApprovalState, ResolvedApprovalState } from '../common/fokkus-approval';
 import { readBitbucketCredentials } from './bitbucket-credentials';
+import { GitCredentialsStore } from './git-credentials-store';
 
 const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm)
 
@@ -85,6 +86,9 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     @inject(WorkspaceServer)
     protected readonly workspaceServer: WorkspaceServer;
+
+    @inject(GitCredentialsStore)
+    protected readonly credentialsStore: GitCredentialsStore;
 
     protected readonly onDidDispatchSwarmEmitter = new Emitter<SwarmDispatchResult>();
     readonly onDidDispatchSwarm: Event<SwarmDispatchResult> = this.onDidDispatchSwarmEmitter.event;
@@ -302,22 +306,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     /** Expone el token de la integración GitHub a los agentes y evita que git abra diálogos de credenciales. */
     private async applyAgentGitEnvironment(env: NodeJS.ProcessEnv): Promise<void> {
-        let token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
-        if (!token) {
-            const githubConfigPath = join(os.homedir(), '.fokkus', 'github.json');
-            try {
-                const raw = await fs.readFile(githubConfigPath, 'utf8');
-                const parsed: unknown = JSON.parse(raw);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                    const candidate = (parsed as { token?: unknown }).token;
-                    if (typeof candidate === 'string') {
-                        token = candidate.trim();
-                    }
-                }
-            } catch {
-                // No existe el archivo o no es JSON válido: se continúa sin token.
-            }
-        }
+        const { token } = await this.credentialsStore.resolveGitHubToken();
         if (token) {
             env.GITHUB_TOKEN = token;
             env.GH_TOKEN = token;
@@ -330,13 +319,20 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     /**
-     * Expone a los agentes las credenciales de Bitbucket leídas de
-     * `~/.bitbucket_credentials.env`. Nunca sobrescribe una variable que ya venga
-     * del entorno del proceso y nunca registra nombres ni valores en los logs.
-     * Si la lectura falla, no hace nada y no lanza.
+     * Expone a los agentes las credenciales efectivas de Bitbucket (almacén seguro,
+     * entorno o archivo legado) más los tokens por repo del `.env`. Nunca sobrescribe
+     * una variable que ya venga del entorno del proceso y nunca registra nombres ni
+     * valores en los logs. Si la lectura falla, no hace nada y no lanza.
      */
     private async applyAgentBitbucketEnvironment(env: NodeJS.ProcessEnv): Promise<void> {
         try {
+            const account = await this.credentialsStore.resolveBitbucketAccount();
+            if (account.username && !env.BITBUCKET_USERNAME) {
+                env.BITBUCKET_USERNAME = account.username;
+            }
+            if (account.appPassword && !env.BITBUCKET_APP_PASSWORD) {
+                env.BITBUCKET_APP_PASSWORD = account.appPassword;
+            }
             const { credentials } = await readBitbucketCredentials();
             for (const [name, value] of Object.entries(credentials.variables)) {
                 if (!env[name]) {

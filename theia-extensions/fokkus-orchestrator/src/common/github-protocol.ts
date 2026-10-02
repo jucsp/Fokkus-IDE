@@ -12,8 +12,8 @@ export const GitHubServer = Symbol('GitHubServer');
 
 export interface GitHubConfigStatus {
     hasToken: boolean;
-    /** De dónde sale el token: variable de entorno, ~/.fokkus/github.json o ninguno. */
-    tokenSource: 'env' | 'file' | 'none';
+    /** De dónde sale el token: variable de entorno, almacén seguro, ~/.fokkus/github.json o ninguno. */
+    tokenSource: 'env' | 'secret-storage' | 'file' | 'none';
     /** Login del usuario autenticado (GET /user), si el token es válido. */
     login?: string;
 }

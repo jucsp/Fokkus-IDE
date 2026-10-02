@@ -12,7 +12,7 @@ import { isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { injectable } from '@theia/core/shared/inversify';
+import { inject, injectable } from '@theia/core/shared/inversify';
 import {
     BitbucketAllPullRequestsResult,
     BitbucketConfigStatus,
@@ -23,7 +23,8 @@ import {
     BitbucketRepoError,
     BitbucketServer
 } from '../common/bitbucket-protocol';
-import { readBitbucketCredentials } from './bitbucket-credentials';
+import { BitbucketCredentials, readBitbucketCredentials } from './bitbucket-credentials';
+import { GitCredentialsStore } from './git-credentials-store';
 
 const execFileAsync = promisify(execFile);
 
@@ -118,11 +119,16 @@ export function parseBitbucketRemote(url: string): string | undefined {
 export class BitbucketServerImpl implements BitbucketServer {
     private readonly pagesCache = new Map<string, { expires: number; items: unknown[] }>();
 
+    constructor(@inject(GitCredentialsStore) protected readonly credentialsStore: GitCredentialsStore) {
+        this.credentialsStore.onDidChange(() => this.pagesCache.clear());
+    }
+
     async getConfig(): Promise<BitbucketConfigStatus> {
-        const { exists, credentials } = await readBitbucketCredentials();
+        const { exists, credentials } = await this.resolveEffectiveBitbucketCredentials();
+        const hasAccount = !!(credentials.username && credentials.appPassword);
         const status: BitbucketConfigStatus = {
-            hasCredentials: exists,
-            hasAppPassword: !!(credentials.username && credentials.appPassword),
+            hasCredentials: exists || hasAccount,
+            hasAppPassword: hasAccount,
             tokenRepositories: credentials.repositories.map(repo => repo.fullName)
         };
         if (credentials.username) {
@@ -156,7 +162,7 @@ export class BitbucketServerImpl implements BitbucketServer {
     }
 
     async listRepositories(): Promise<BitbucketRepo[]> {
-        const { credentials } = await readBitbucketCredentials();
+        const { credentials } = await this.resolveEffectiveBitbucketCredentials();
         const byFullName = new Map<string, BitbucketRepo>();
 
         // Los repos con token propio ganan siempre ante un eventual duplicado descubierto por app password.
@@ -257,9 +263,27 @@ export class BitbucketServerImpl implements BitbucketServer {
         return raw.map(file => this.mapFile(file));
     }
 
+    /**
+     * Credenciales efectivas de Bitbucket: los tokens por repo del `.env` (sin cambios)
+     * más el usuario/app password con precedencia env > almacén seguro > archivo legado.
+     */
+    private async resolveEffectiveBitbucketCredentials(): Promise<{ exists: boolean; credentials: BitbucketCredentials }> {
+        const { exists, credentials } = await readBitbucketCredentials();
+        const account = await this.credentialsStore.resolveBitbucketAccount();
+        if (account.username) {
+            credentials.username = account.username;
+            credentials.variables.BITBUCKET_USERNAME = account.username;
+        }
+        if (account.appPassword) {
+            credentials.appPassword = account.appPassword;
+            credentials.variables.BITBUCKET_APP_PASSWORD = account.appPassword;
+        }
+        return { exists, credentials };
+    }
+
     /** Resuelve las credenciales de un repo: token propio (Bearer) o app password (Basic). */
     private async resolveRepoAuth(repo: string): Promise<ApiAuth> {
-        const { credentials } = await readBitbucketCredentials();
+        const { credentials } = await this.resolveEffectiveBitbucketCredentials();
         const repoCredential = credentials.repositories.find(item => item.fullName === repo);
         if (repoCredential) {
             return { kind: 'token', credentialVariable: repoCredential.variable, token: repoCredential.token };

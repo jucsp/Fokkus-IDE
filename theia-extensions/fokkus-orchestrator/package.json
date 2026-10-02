@@ -21,6 +21,7 @@
   ],
   "dependencies": {
     "@theia/core": "1.76.0-next.18",
+    "@theia/preferences": "1.76.0-next.18",
     "@theia/workspace": "1.76.0-next.18",
     "@xyflow/react": "^12.11.6",
     "mermaid": "^12.0.0",

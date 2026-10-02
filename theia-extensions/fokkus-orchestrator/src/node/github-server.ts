@@ -8,12 +8,11 @@
  ********************************************************************************/
 
 import { promises as fs } from 'fs';
-import * as os from 'os';
-import { join, isAbsolute } from 'path';
+import { isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { injectable } from '@theia/core/shared/inversify';
+import { inject, injectable } from '@theia/core/shared/inversify';
 import {
     GitHubColumn,
     GitHubConfigInput,
@@ -30,11 +29,11 @@ import {
     GitHubServer,
     GitHubUser
 } from '../common/github-protocol';
+import { GitCredentialAccounts } from '../common/git-credentials-protocol';
+import { GitCredentialsStore, validateStoredSecret } from './git-credentials-store';
 
 const execFileAsync = promisify(execFile);
 
-const CONFIG_DIR = join(os.homedir(), '.fokkus');
-const CONFIG_PATH = join(CONFIG_DIR, 'github.json');
 const API_BASE = 'https://api.github.com';
 const API_ORIGIN = new URL(API_BASE).origin;
 const REQUEST_TIMEOUT_MS = 20000;
@@ -61,10 +60,6 @@ const GRAPHQL_COLORS: Record<string, string> = {
     PINK: '#bf3989',
     PURPLE: '#8250df'
 };
-
-interface GitHubConfigFile {
-    token?: string;
-}
 
 interface GitHubApiRepo {
     full_name?: string;
@@ -164,6 +159,10 @@ interface GraphQLProjectV2Response {
 export class GitHubServerImpl implements GitHubServer {
     private readonly pagesCache = new Map<string, { expires: number; items: unknown[] }>();
 
+    constructor(@inject(GitCredentialsStore) protected readonly credentialsStore: GitCredentialsStore) {
+        this.credentialsStore.onDidChange(() => this.pagesCache.clear());
+    }
+
     async getConfig(): Promise<GitHubConfigStatus> {
         const tokenSource = await this.resolveTokenSource();
         const token = await this.resolveToken();
@@ -182,19 +181,12 @@ export class GitHubServerImpl implements GitHubServer {
     }
 
     async saveConfig(input: GitHubConfigInput): Promise<GitHubConfigStatus> {
-        // Se conserva el token del archivo si no se envía uno nuevo: las variables de entorno no se persisten.
-        const current = await this.loadConfigFile();
-        const token = (input.token ?? '').trim() || (current.token ?? '').trim();
-
-        const file: GitHubConfigFile = {};
-        if (token) {
-            file.token = token;
+        // El token se guarda en el almacén seguro del sistema (ya no en texto plano). Vacío = conservar.
+        const provided = (input.token ?? '').trim();
+        if (provided) {
+            const token = validateStoredSecret(provided, 'El token de GitHub');
+            await this.credentialsStore.setStored(GitCredentialAccounts.githubToken, token);
         }
-
-        await fs.mkdir(CONFIG_DIR, { recursive: true });
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(file, undefined, 4) + '\n', { mode: 0o600 });
-        // `mode` solo aplica al crear el archivo; si ya existía con otros permisos, se corrigen.
-        await fs.chmod(CONFIG_PATH, 0o600);
         this.pagesCache.clear();
 
         return this.getConfig();
@@ -544,34 +536,14 @@ export class GitHubServerImpl implements GitHubServer {
         return undefined;
     }
 
-    private async resolveTokenSource(): Promise<'env' | 'file' | 'none'> {
-        if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) {
-            return 'env';
-        }
-        const file = await this.loadConfigFile();
-        return file.token ? 'file' : 'none';
+    private async resolveTokenSource(): Promise<'env' | 'secret-storage' | 'file' | 'none'> {
+        const { source } = await this.credentialsStore.resolveGitHubToken();
+        return source === 'legacy-file' ? 'file' : source;
     }
 
     private async resolveToken(): Promise<string> {
-        const envToken = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
-        if (envToken) {
-            return envToken;
-        }
-        const file = await this.loadConfigFile();
-        return (file.token ?? '').trim();
-    }
-
-    private async loadConfigFile(): Promise<GitHubConfigFile> {
-        try {
-            const raw = await fs.readFile(CONFIG_PATH, 'utf8');
-            const parsed: unknown = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                return parsed as GitHubConfigFile;
-            }
-        } catch {
-            // Sin archivo o JSON corrupto: no hay token de archivo.
-        }
-        return {};
+        const { token } = await this.credentialsStore.resolveGitHubToken();
+        return token ?? '';
     }
 
     private assertRepo(repo: string): void {

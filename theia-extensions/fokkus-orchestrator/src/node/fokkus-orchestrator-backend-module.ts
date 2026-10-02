@@ -13,10 +13,13 @@ import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../commo
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protocol';
+import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
 import { FokkusOrchestratorServerImpl } from './fokkus-orchestrator-server';
 import { PlaneServerImpl } from './plane-server';
 import { GitHubServerImpl } from './github-server';
 import { BitbucketServerImpl } from './bitbucket-server';
+import { FokkusKeyStore, GitCredentialsStore } from './git-credentials-store';
+import { GitCredentialsServerImpl } from './git-credentials-server';
 
 export default new ContainerModule(bind => {
     bind(FokkusOrchestratorServer).to(FokkusOrchestratorServerImpl).inSingletonScope();
@@ -44,6 +47,15 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(BitbucketServerPath, () =>
             context.container.get<BitbucketServer>(BitbucketServer)
+        )
+    ).inSingletonScope();
+
+    bind(FokkusKeyStore).toSelf().inSingletonScope();
+    bind(GitCredentialsStore).toSelf().inSingletonScope();
+    bind(GitCredentialsServer).to(GitCredentialsServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(GitCredentialsServerPath, () =>
+            context.container.get<GitCredentialsServer>(GitCredentialsServer)
         )
     ).inSingletonScope();
 });

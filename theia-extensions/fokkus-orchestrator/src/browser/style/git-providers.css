@@ -1,0 +1,184 @@
+/********************************************************************************
+ * Preferencias › Fokkus › Integrations › Git Providers (prefijo fokkus-gitprov-)
+ ********************************************************************************/
+
+.theia-settings-container .pref-content-container .pref-input.fokkus-gitprov-pref-input {
+    max-width: 620px;
+}
+
+.fokkus-gitprov {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 6px;
+    font-family: var(--theia-ui-font-family);
+    color: var(--theia-foreground);
+}
+
+.fokkus-gitprov-muted {
+    color: var(--theia-descriptionForeground);
+}
+
+.fokkus-gitprov-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--theia-widget-border, var(--theia-panel-border));
+    line-height: 1.4;
+}
+
+.fokkus-gitprov-banner .codicon {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.fokkus-gitprov-banner-text {
+    flex: 1;
+}
+
+.fokkus-gitprov-banner-ok .codicon {
+    color: var(--theia-testing-iconPassed, var(--theia-charts-green));
+}
+
+.fokkus-gitprov-banner-info {
+    align-items: center;
+    background: var(--theia-inputValidation-infoBackground);
+    border-color: var(--theia-inputValidation-infoBorder);
+}
+
+.fokkus-gitprov-banner-warning {
+    background: var(--theia-inputValidation-warningBackground);
+    border-color: var(--theia-inputValidation-warningBorder);
+}
+
+.fokkus-gitprov-banner-error {
+    background: var(--theia-inputValidation-errorBackground);
+    border-color: var(--theia-inputValidation-errorBorder);
+}
+
+.fokkus-gitprov-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid var(--theia-widget-border, var(--theia-panel-border));
+    background: var(--theia-sideBar-background);
+}
+
+.fokkus-gitprov-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fokkus-gitprov-card-title {
+    font-weight: 600;
+    font-size: calc(var(--theia-ui-font-size1) * 1.1);
+}
+
+.fokkus-gitprov-badge {
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: var(--theia-ui-font-size0);
+    background: var(--theia-badge-background);
+    color: var(--theia-badge-foreground);
+}
+
+.fokkus-gitprov-badge-none {
+    background: transparent;
+    color: var(--theia-descriptionForeground);
+    border: 1px solid var(--theia-widget-border, var(--theia-panel-border));
+}
+
+.fokkus-gitprov-badge-legacy-file {
+    background: var(--theia-inputValidation-warningBackground);
+    color: var(--theia-foreground);
+}
+
+.fokkus-gitprov-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fokkus-gitprov-label {
+    font-weight: 600;
+}
+
+.fokkus-gitprov-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fokkus-gitprov-secret {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+}
+
+.fokkus-gitprov-secret .fokkus-gitprov-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.fokkus-gitprov-reveal {
+    flex-shrink: 0;
+    width: 28px;
+    border: 1px solid var(--theia-dropdown-border, var(--theia-widget-border));
+    border-radius: 2px;
+    background: transparent;
+    color: var(--theia-foreground);
+    cursor: pointer;
+}
+
+.fokkus-gitprov-reveal:hover:not(:disabled) {
+    background: var(--theia-toolbar-hoverBackground);
+}
+
+.fokkus-gitprov-reveal:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.fokkus-gitprov-hint {
+    margin: 0;
+    color: var(--theia-descriptionForeground);
+    font-size: var(--theia-ui-font-size0);
+    line-height: 1.4;
+}
+
+.fokkus-gitprov-repo {
+    margin-right: 4px;
+}
+
+.fokkus-gitprov-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.fokkus-gitprov-actions .theia-button {
+    margin-left: 0;
+}
+
+/* El tema de Fokkus no distingue los botones deshabilitados: se fuerza el contraste. */
+.fokkus-gitprov .theia-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.fokkus-gitprov-feedback {
+    font-size: var(--theia-ui-font-size0);
+}
+
+.fokkus-gitprov-feedback-success {
+    color: var(--theia-testing-iconPassed, var(--theia-charts-green));
+}
+
+.fokkus-gitprov-feedback-error {
+    color: var(--theia-errorForeground);
+}

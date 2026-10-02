@@ -13,11 +13,15 @@ import '../../src/browser/style/plane-backlog.css';
 import '../../src/browser/style/plane-kanban.css';
 import '../../src/browser/style/github.css';
 import '../../src/browser/style/github-issues.css';
+import '../../src/browser/style/git-providers.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
+import { CommandContribution, PreferenceContribution } from '@theia/core/lib/common';
 import { ContainerModule } from '@theia/core/shared/inversify';
+import { PreferenceNodeRendererContribution } from '@theia/preferences/lib/browser/views/components/preference-node-renderer-creator';
 import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protocol';
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
+import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { BitbucketPullRequestsWidget } from './bitbucket-pull-requests-widget';
@@ -25,6 +29,12 @@ import { BitbucketScmContribution } from './bitbucket-scm-contribution';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contribution';
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
+import {
+    GitProvidersCommandContribution,
+    gitProvidersPreferenceSchema,
+    GitProvidersPreferenceRenderer,
+    GitProvidersPreferenceRendererContribution
+} from './git-providers-preferences';
 import { GitHubIssuesContribution } from './github-issues-contribution';
 import { GitHubIssuesService } from './github-issues-service';
 import { GitHubIssuesWidget } from './github-issues-widget';
@@ -132,4 +142,16 @@ export default new ContainerModule(bind => {
         const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
         return provider.createProxy<BitbucketServer>(BitbucketServerPath);
     }).inSingletonScope();
+
+    // Preferencias › Fokkus › Integrations › Git Providers (#22). Los secretos los guarda el backend.
+    bind(GitCredentialsServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<GitCredentialsServer>(GitCredentialsServerPath);
+    }).inSingletonScope();
+    bind(PreferenceContribution).toConstantValue({ schema: gitProvidersPreferenceSchema });
+    bind(GitProvidersPreferenceRenderer).toSelf();
+    bind(GitProvidersPreferenceRendererContribution).toSelf().inSingletonScope();
+    bind(PreferenceNodeRendererContribution).toService(GitProvidersPreferenceRendererContribution);
+    bind(GitProvidersCommandContribution).toSelf().inSingletonScope();
+    bind(CommandContribution).toService(GitProvidersCommandContribution);
 });

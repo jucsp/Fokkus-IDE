@@ -11,6 +11,7 @@
 - [ ] Pruebas de usabilidad por usuarios externos (Amigos en Windows).
 
 ## ✅ Done (Completado)
+- [x] **[Responsable: Swarm (DeepSeek + Claude Code)]** #26 (v1.7.1) — Soporte de credenciales estilo MCP en la Bandeja: Sesión Web en Slack (token `xoxc-` + cookie `d` `xoxd-`) sin requerir app/admin, y credenciales JSON para Google Workspace / Gmail (`client_secret.json` / MCP) con UI adaptativa (17/17 PASS, 26/26 regresión, tsc/eslint OK). Publicado en `v1.7.1`.
 - [x] **[Responsable: DeepSeek V4 Pro (Senior Dev)]** #26 (Mejora Deduplicación Remota) — Estampado de `Fokkus-Triage-ID: <item.id>` en la descripción del ticket y verificación previa en **Plane**, **Jira** y **GitHub Issues** filtrando desde `receivedAt` en adelante para vincular sin duplicar (`PASS 26/26`).
 - [x] **[Responsable: DeepSeek V4 Pro (Senior Dev + Backup QA)]** #26 (Fase 3) — Fix shadow `status` -> `httpStatus` en `triage-server.ts:270` (`eslint` 0 errores, `tsc -b` 0 errores, `theia build` browser + node 0 errores) y suite unitaria sin red `unit-triage.test.js` (`PASS 25/25`).
 - [x] **[Responsable: Claude Code (Backup Senior Dev — DeepSeek HTTP 402)]** #26 (Fase 2) — Motor Backend completo (`src/node/triage/*`, `plane-server.ts`, `fokkus-orchestrator-backend-module.ts`): cliente HTTP con allowlist, config/secretos en keystore del SO, store de ítems/cursores, clasificador de 5 categorías, fuentes Slack/Gmail, adaptadores multi-destino (Plane, Jira, GitHub Issues), poller de 5 min y `TriageServerImpl`. Compila con 0 errores en `tsc -b` y `theia build` (browser + node).

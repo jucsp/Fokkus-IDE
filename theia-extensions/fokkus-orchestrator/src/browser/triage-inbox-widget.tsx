@@ -11,6 +11,7 @@ import * as React from '@theia/core/shared/react';
 import { ConfirmDialog } from '@theia/core/lib/browser';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
+import { MessageService } from '@theia/core/lib/common/message-service';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import {
     TARGET_PROVIDER_LABELS,
@@ -30,6 +31,8 @@ import {
     TriageSource
 } from '../common/triage-protocol';
 import { TriageConfigPanel } from './triage-config-panel';
+import { TriageFeedbackRules } from './triage-feedback-rules';
+import { TriageReplyDialog, TriageReplyNotifier } from './triage-reply-dialog';
 import { TriageClientImpl, triageErrorMessage, withTriageTimeout } from './triage-service';
 import { EMPTY_TARGET_DRAFT, missingRequiredGroups, TargetCache, TargetDraft, TriageTargetPicker } from './triage-target-picker';
 
@@ -132,9 +135,11 @@ interface TriageCardProps {
     windowService: WindowService;
     onToggle(): void;
     onItemChanged(item: TriageItem): void;
+    /** Abre el diálogo de respuesta al cliente (#29). `auto` = recién aprobado. */
+    onReply(item: TriageItem, auto: boolean): void;
 }
 
-function TriageCard({ item, expanded, server, cache, providers, windowService, onToggle, onItemChanged }: TriageCardProps): React.ReactElement {
+function TriageCard({ item, expanded, server, cache, providers, windowService, onToggle, onItemChanged, onReply }: TriageCardProps): React.ReactElement {
     const [title, setTitle] = React.useState(item.title);
     const [description, setDescription] = React.useState(item.description);
     const [category, setCategory] = React.useState<TriageCategory>(item.category);
@@ -204,6 +209,7 @@ function TriageCard({ item, expanded, server, cache, providers, windowService, o
             includeSourceReference: includeSource
         }), APPROVE_TIMEOUT_MS);
         rememberTarget(category, target);
+        onReply(result.item, true);
         return result.item;
     });
 
@@ -232,7 +238,20 @@ function TriageCard({ item, expanded, server, cache, providers, windowService, o
                         <i className='fa fa-ticket' /> {TARGET_PROVIDER_LABELS[item.approval.ticket.provider]} {item.approval.ticket.key}
                     </a>
                 )}
-                {item.status === 'discarded' && <span className='fokkus-triage-discarded-tag'>Descartada</span>}
+                {item.status === 'approved' && item.replySent && (
+                    <span
+                        className={`fokkus-triage-reply-badge${item.replyMode === 'draft' ? ' fokkus-triage-reply-badge-draft' : ''}`}
+                        title={item.replySentAt ? new Date(item.replySentAt).toLocaleString() : undefined}
+                    >
+                        <i className='fa fa-check-circle' /> {item.replyMode === 'draft' ? 'Borrador en Gmail' : 'Respuesta enviada'} · {formatDateTime(item.replySentAt)}
+                    </span>
+                )}
+                {item.status === 'discarded' && item.autoDiscarded && (
+                    <span className='fokkus-triage-auto-badge' title={`Motivo: ${item.autoDiscardReason ?? item.discardReason ?? 'regla aprendida'}`}>
+                        <i className='fa fa-magic' /> Auto-descartado por IA
+                    </span>
+                )}
+                {item.status === 'discarded' && !item.autoDiscarded && <span className='fokkus-triage-discarded-tag'>Descartada</span>}
                 {item.lastError && pending && <span className='fokkus-triage-error-tag' title={item.lastError}><i className='fa fa-exclamation-triangle' /> Falló</span>}
             </div>
 
@@ -407,6 +426,16 @@ function TriageCard({ item, expanded, server, cache, providers, windowService, o
                                 <i className='fa fa-external-link' /> Abrir ticket {item.approval.ticket.key}
                             </button>
                         )}
+                        {item.status === 'approved' && item.approval && !item.replySent && (
+                            <button
+                                type='button'
+                                className='fokkus-backlog-icon-button fokkus-triage-reply-open'
+                                onClick={() => onReply(item, false)}
+                                title={item.replyCopiedAt ? `Copiada para envío manual el ${new Date(item.replyCopiedAt).toLocaleString()}` : undefined}
+                            >
+                                <i className='fa fa-reply' /> Enviar respuesta al cliente
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -423,16 +452,20 @@ interface TriageInboxAppProps {
     client: TriageClientImpl;
     windowService: WindowService;
     confirm(title: string, message: string): Promise<boolean>;
+    notify: TriageReplyNotifier;
     onCountsChanged(counts: TriageCounts): void;
 }
 
-function TriageInboxApp({ server, client, windowService, confirm, onCountsChanged }: TriageInboxAppProps): React.ReactElement {
+function TriageInboxApp({ server, client, windowService, confirm, notify, onCountsChanged }: TriageInboxAppProps): React.ReactElement {
     const cache = React.useMemo(() => new TargetCache(server), [server]);
     const [bootError, setBootError] = React.useState<string>();
     const [polling, setPolling] = React.useState<TriagePollingStatus>();
     const [counts, setCounts] = React.useState<TriageCounts>();
     const [providers, setProviders] = React.useState<TargetProviderStatus[]>([]);
     const [configOpen, setConfigOpen] = React.useState(false);
+    const [rulesOpen, setRulesOpen] = React.useState(false);
+    const [rulesVersion, setRulesVersion] = React.useState(0);
+    const [reply, setReply] = React.useState<{ item: TriageItem; auto: boolean }>();
 
     const [filters, setFilters] = React.useState<SavedFilters>(loadFilters);
     const [searchQuery, setSearchQuery] = React.useState('');
@@ -495,6 +528,13 @@ function TriageInboxApp({ server, client, windowService, confirm, onCountsChange
         loadItems(query);
     }, [filters, query, loadItems]);
 
+    // Al revisar las descartadas, las reglas que las produjeron quedan a la vista.
+    React.useEffect(() => {
+        if (filters.status === 'discarded') {
+            setRulesOpen(true);
+        }
+    }, [filters.status]);
+
     // Eventos en vivo del backend.
     React.useEffect(() => {
         const disposable = client.onDidReceiveEvent(event => {
@@ -524,9 +564,15 @@ function TriageInboxApp({ server, client, windowService, confirm, onCountsChange
             const others = current.filter(item => item.id !== updated.id);
             return matchesQuery(updated, queryRef.current) ? sortByActivity([...others, updated]) : others;
         });
+        if (updated.status === 'discarded' && updated.discardReason) {
+            setRulesVersion(version => version + 1);
+        }
         // Los contadores llegan por el evento item-updated; si el evento no llega (backend sin cliente), se piden.
         withTriageTimeout(server.getStatus()).then(status => applyCounts(status.counts)).catch(() => undefined);
     };
+
+    const openReply = React.useCallback((item: TriageItem, auto: boolean) => setReply({ item, auto }), []);
+    const closeReply = React.useCallback(() => setReply(undefined), []);
 
     const pollNow = async (): Promise<void> => {
         setPollBusy(true);
@@ -658,11 +704,38 @@ function TriageInboxApp({ server, client, windowService, confirm, onCountsChange
                 )}
             </section>
 
+            {/* Reglas aprendidas (#28) */}
+            <section className='fokkus-backlog-section'>
+                <button
+                    type='button'
+                    className='fokkus-backlog-section-header'
+                    onClick={() => setRulesOpen(open => !open)}
+                    aria-expanded={rulesOpen}
+                >
+                    <span><i className='fa fa-magic' /> Reglas de auto-descarte</span>
+                    <span className='fokkus-backlog-section-chevron'>{rulesOpen ? '▾' : '▸'}</span>
+                </button>
+                {rulesOpen && (
+                    <div className='fokkus-backlog-section-body'>
+                        <TriageFeedbackRules server={server} refreshKey={rulesVersion} confirm={confirm} />
+                    </div>
+                )}
+            </section>
+
             {/* Filtros + lista */}
             <section className='fokkus-backlog-section'>
                 <div className='fokkus-backlog-section-header fokkus-backlog-section-header-static'>
                     <span><i className='fa fa-inbox' /> Solicitudes</span>
                     <span className='fokkus-backlog-header-actions'>
+                        <button
+                            type='button'
+                            className={`fokkus-backlog-icon-button${rulesOpen ? ' fokkus-triage-toggle-active' : ''}`}
+                            onClick={() => setRulesOpen(open => !open)}
+                            aria-pressed={rulesOpen}
+                            title='Reglas de auto-descarte aprendidas'
+                        >
+                            <i className='fa fa-magic' /> Reglas
+                        </button>
                         <span className='fokkus-backlog-count'>
                             {searchQuery.trim() ? `${filteredItems.length} / ${items.length}` : items.length}
                         </span>
@@ -730,10 +803,22 @@ function TriageInboxApp({ server, client, windowService, confirm, onCountsChange
                             windowService={windowService}
                             onToggle={() => setExpandedId(current => current === item.id ? undefined : item.id)}
                             onItemChanged={handleItemChanged}
+                            onReply={openReply}
                         />
                     ))}
                 </div>
             </section>
+
+            {reply && (
+                <TriageReplyDialog
+                    key={reply.item.id}
+                    item={reply.item}
+                    server={server}
+                    auto={reply.auto}
+                    notify={notify}
+                    onClose={closeReply}
+                />
+            )}
         </div>
     );
 }
@@ -753,6 +838,9 @@ export class TriageInboxWidget extends ReactWidget {
     @inject(WindowService)
     protected readonly windowService: WindowService;
 
+    @inject(MessageService)
+    protected readonly messageService: MessageService;
+
     @postConstruct()
     protected init(): void {
         this.id = TriageInboxWidget.ID;
@@ -769,6 +857,11 @@ export class TriageInboxWidget extends ReactWidget {
         return !!(await dialog.open());
     };
 
+    protected readonly notify: TriageReplyNotifier = {
+        info: message => { this.messageService.info(message); },
+        warn: message => { this.messageService.warn(message); }
+    };
+
     /** El icono lateral no admite badge fuera de un ViewContainer: el número de pendientes va en el tooltip. */
     protected readonly onCountsChanged = (counts: TriageCounts): void => {
         this.title.caption = counts.pending > 0
@@ -782,6 +875,7 @@ export class TriageInboxWidget extends ReactWidget {
             client={this.triageClient}
             windowService={this.windowService}
             confirm={this.confirm}
+            notify={this.notify}
             onCountsChanged={this.onCountsChanged}
         />;
     }

@@ -191,6 +191,35 @@ export class GmailSource {
         return email;
     }
 
+    /**
+     * Responde al hilo (#29). Intenta `send` y, si no hay permiso de escritura, deja un `draft`;
+     * si tampoco puede, devuelve `clipboard` con el texto para copiar, sin lanzar.
+     */
+    async sendReply(
+        threadId: string, to: string, subject: string, body: string
+    ): Promise<{ ok: boolean; mode: 'sent' | 'draft' | 'clipboard'; notice?: string }> {
+        const account = (this.profileEmail ?? (await this.profile())).toLowerCase();
+        const raw = this.composeRaw(account, to, subject, body);
+        try {
+            await this.post('messages/send', { raw, threadId });
+            return { ok: true, mode: 'sent' };
+        } catch (sendErr) {
+            const reason = sendErr instanceof TriageHttpError && sendErr.status === 403
+                ? 'Gmail no autoriza el envío (falta el scope gmail.send o gmail.modify)'
+                : sendErr instanceof Error ? sendErr.message : 'No se pudo enviar la respuesta';
+            try {
+                await this.post('drafts', { message: { raw, threadId } });
+                return { ok: true, mode: 'draft', notice: `No se pudo enviar (${reason}); se dejó un borrador en Gmail.` };
+            } catch {
+                return {
+                    ok: false,
+                    mode: 'clipboard',
+                    notice: `Gmail no permitió enviar ni guardar un borrador (${reason}). Copia la respuesta y envíala manualmente.`
+                };
+            }
+        }
+    }
+
     async poll(): Promise<SourcePollOutput> {
         const result: TriageSourcePollResult = { source: 'gmail', ok: true, fetched: 0, created: 0, updated: 0, ignored: 0 };
         const output: SourcePollOutput = { result, created: [], updated: [] };
@@ -326,6 +355,43 @@ export class GmailSource {
             }
             throw err;
         }
+    }
+
+    private async post(path: string, body: unknown): Promise<unknown> {
+        const url = `${GMAIL_API}${path}`;
+        try {
+            return await triageJson({
+                method: 'POST',
+                url,
+                headers: { Authorization: `Bearer ${await this.token()}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }, 'Gmail');
+        } catch (err) {
+            if (err instanceof TriageHttpError && err.status === 401) {
+                this.accessToken = undefined;
+                throw new Error('Gmail rechazó el access token (HTTP 401)');
+            }
+            throw err;
+        }
+    }
+
+    /** Arma el mensaje RFC 2822 y lo codifica en base64url para `raw`. */
+    private composeRaw(from: string, to: string, subject: string, body: string): string {
+        const headers = [
+            `From: ${from}`,
+            `To: ${to}`,
+            `Subject: ${this.encodeHeader(subject)}`,
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=UTF-8',
+            'Content-Transfer-Encoding: 8bit'
+        ];
+        const raw = `${headers.join('\r\n')}\r\n\r\n${body}`;
+        return Buffer.from(raw, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    /** Encoded-word para cabeceras con caracteres no ASCII (asuntos con tildes). */
+    private encodeHeader(value: string): string {
+        return /[^\x00-\x7F]/.test(value) ? `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=` : value;
     }
 
     private async token(): Promise<string> {

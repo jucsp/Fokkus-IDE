@@ -21,6 +21,9 @@ import {
     TRIAGE_CATEGORIES,
     TRIAGE_DESCRIPTION_MAX_LENGTH,
     TRIAGE_DISCARD_REASON_MAX_LENGTH,
+    TRIAGE_FEEDBACK_RULE_ID_MAX,
+    TRIAGE_REPLY_BODY_MAX_LENGTH,
+    TRIAGE_REPLY_SUBJECT_MAX_LENGTH,
     TRIAGE_TITLE_MAX_LENGTH,
     TriageApproveInput,
     TriageApproveResult,
@@ -29,22 +32,29 @@ import {
     TriageConfigStatus,
     TriageConnectionTestResult,
     TriageEvent,
+    TriageFeedbackRule,
     TriageItem,
     TriageItemPatch,
     TriageItemQuery,
     TriagePollingStatus,
     TriagePollResult,
+    TriageReplyDraft,
+    TriageSendReplyInput,
+    TriageSendReplyResult,
     TriageServer,
     TriageSource,
     TriageSourcePollResult,
-    TriageStatus
+    TriageStatus,
+    TriageTicketRef
 } from '../../common/triage-protocol';
 import { GitCredentialsStore } from '../git-credentials-store';
 import { GmailSource } from './sources/gmail-source';
 import { SlackSource, SourcePollOutput } from './sources/slack-source';
 import { TriageConfigService } from './triage-config';
+import { TriageFeedbackStore } from './triage-feedback';
 import { TriageHttpError } from './triage-http';
 import { TriagePoller } from './triage-poller';
+import { generateReplyDraft, gmailThreadId, recipientFor, slackParts, subjectFor } from './triage-reply';
 import { TriageStore } from './triage-store';
 import { GitHubTarget } from './targets/github-target';
 import { JiraTarget } from './targets/jira-target';
@@ -77,6 +87,8 @@ function isProvider(value: unknown): value is TargetProviderId {
 export class TriageServerImpl implements TriageServer {
     private readonly clients = new Set<TriageClient>();
     private readonly approving = new Map<string, Promise<TriageApproveResult>>();
+    /** Ítems con un envío de respuesta en curso (#29): evita doble envío por doble clic o dos ventanas. */
+    private readonly replying = new Set<string>();
     readonly slack: SlackSource;
     readonly gmail: GmailSource;
     readonly adapters: Record<TargetProviderId, TargetAdapter>;
@@ -85,6 +97,7 @@ export class TriageServerImpl implements TriageServer {
     constructor(
         @inject(TriageConfigService) protected readonly config: TriageConfigService,
         @inject(TriageStore) protected readonly store: TriageStore,
+        @inject(TriageFeedbackStore) protected readonly feedback: TriageFeedbackStore,
         @inject(GitCredentialsStore) protected readonly gitCredentials: GitCredentialsStore,
         @inject(ILogger) protected readonly logger: ILogger
     ) {
@@ -202,14 +215,25 @@ export class TriageServerImpl implements TriageServer {
         if (this.approving.has(id)) {
             throw new Error('La solicitud se está aprobando');
         }
+        const before = await this.store.get(id);
         const item = await this.store.updateItem(id, current => {
             if (current.status !== 'pending') {
                 throw new Error('Solo se pueden descartar solicitudes pendientes');
             }
             current.status = 'discarded';
             current.discardReason = trimmed || undefined;
+            current.autoDiscarded = undefined;
+            current.autoDiscardReason = undefined;
             current.updatedAt = new Date().toISOString();
         });
+        if (trimmed && before) {
+            // Un fallo al registrar la regla no debe deshacer el descarte.
+            await this.feedback.recordDiscard({
+                author: before.author,
+                originalSubject: before.originalSubject,
+                reason: trimmed
+            }).catch(() => undefined);
+        }
         await this.emitUpdated(item);
         return item;
     }
@@ -222,6 +246,8 @@ export class TriageServerImpl implements TriageServer {
             }
             current.status = 'pending';
             current.discardReason = undefined;
+            current.autoDiscarded = undefined;
+            current.autoDiscardReason = undefined;
             current.updatedAt = new Date().toISOString();
         });
         await this.emitUpdated(item);
@@ -463,6 +489,123 @@ export class TriageServerImpl implements TriageServer {
         });
         await this.emitUpdated(item);
         return { item, ticket: created.ticket };
+    }
+
+    // --- Feedback aprendido (#28) ----------------------------------------------------------
+
+    getFeedbackRules(): Promise<TriageFeedbackRule[]> {
+        return this.feedback.list();
+    }
+
+    async deleteFeedbackRule(ruleId: string): Promise<void> {
+        if (typeof ruleId !== 'string' || !ruleId || ruleId.length > TRIAGE_FEEDBACK_RULE_ID_MAX) {
+            throw new Error('Identificador de regla inválido');
+        }
+        await this.feedback.delete(ruleId);
+    }
+
+    // --- Respuesta al cliente (#29) --------------------------------------------------------
+
+    async getReplyDraft(itemId: string): Promise<TriageReplyDraft> {
+        const id = this.itemId(itemId);
+        const item = await this.store.get(id);
+        if (!item) {
+            throw new Error('Solicitud no encontrada');
+        }
+        const ticket = this.approvedTicket(item);
+        return generateReplyDraft(item, ticket);
+    }
+
+    async sendReply(input: TriageSendReplyInput): Promise<TriageSendReplyResult> {
+        if (!input || typeof input !== 'object') {
+            throw new Error('Datos de respuesta inválidos');
+        }
+        const id = this.itemId(input.itemId);
+        const mode = input.mode ?? 'send';
+        if (mode !== 'send' && mode !== 'clipboard') {
+            throw new Error('Modo de respuesta inválido');
+        }
+        const body = typeof input.body === 'string' ? input.body : '';
+        const trimmed = body.trim();
+        if (!trimmed) {
+            throw new Error('El texto de la respuesta está vacío');
+        }
+        if (trimmed.length > TRIAGE_REPLY_BODY_MAX_LENGTH) {
+            throw new Error(`La respuesta excede los ${TRIAGE_REPLY_BODY_MAX_LENGTH} caracteres`);
+        }
+        if (input.subject !== undefined && typeof input.subject !== 'string') {
+            throw new Error('Asunto inválido');
+        }
+        // Sin saltos de línea: el asunto va a una cabecera RFC 2822 (evita inyectar cabeceras).
+        const subject = (input.subject ?? '').replace(/[\r\n]+/g, ' ').trim();
+        if (subject.length > TRIAGE_REPLY_SUBJECT_MAX_LENGTH) {
+            throw new Error(`El asunto excede los ${TRIAGE_REPLY_SUBJECT_MAX_LENGTH} caracteres`);
+        }
+        if (this.replying.has(id)) {
+            throw new Error('La respuesta ya se está enviando');
+        }
+        // El candado se toma antes del primer await: si no, dos llamadas concurrentes pasarían ambas el chequeo.
+        this.replying.add(id);
+        try {
+            return await this.deliverReply(id, mode, trimmed, subject);
+        } finally {
+            this.replying.delete(id);
+        }
+    }
+
+    private async deliverReply(id: string, mode: 'send' | 'clipboard', body: string, subject: string): Promise<TriageSendReplyResult> {
+        const item = await this.store.get(id);
+        if (!item) {
+            throw new Error('Solicitud no encontrada');
+        }
+        this.approvedTicket(item);
+        if (item.replySent) {
+            throw new Error('La respuesta ya fue enviada');
+        }
+
+        if (mode === 'clipboard') {
+            const copiedAt = new Date().toISOString();
+            const copied = await this.store.updateItem(id, current => {
+                current.replyCopiedAt = copiedAt;
+                current.updatedAt = copiedAt;
+            });
+            await this.emitUpdated(copied);
+            return { ok: true, mode: 'clipboard', message: 'Respuesta copiada al portapapeles para enviarla manualmente' };
+        }
+
+        let result: TriageSendReplyResult;
+        if (item.source === 'slack') {
+            const { channelId, threadTs } = slackParts(item.id);
+            await this.slack.replyThread(channelId, threadTs, body);
+            result = { ok: true, mode: 'sent', message: 'Respuesta publicada en el hilo de Slack' };
+        } else {
+            const sent = await this.gmail.sendReply(gmailThreadId(item.id), recipientFor(item), subject || subjectFor(item), body);
+            result = sent.ok
+                ? { ok: true, mode: sent.mode, message: sent.mode === 'sent' ? 'Respuesta enviada por Gmail' : sent.notice ?? 'Se dejó un borrador en Gmail' }
+                : { ok: false, mode: 'clipboard', error: sent.notice ?? 'Gmail no permitió enviar la respuesta' };
+        }
+        if (!result.ok) {
+            // Nada salió de la máquina: el ítem sigue sin respuesta para poder reintentar.
+            return result;
+        }
+        const deliveredAs = result.mode === 'draft' ? 'draft' : 'sent';
+        const now = new Date().toISOString();
+        const updated = await this.store.updateItem(id, current => {
+            current.replySent = true;
+            current.replySentAt = now;
+            current.replyMode = deliveredAs;
+            current.updatedAt = now;
+        });
+        await this.emitUpdated(updated);
+        return result;
+    }
+
+    /** Valida que el ítem esté aprobado y devuelve su ticket. */
+    private approvedTicket(item: TriageItem): TriageTicketRef {
+        if (item.status !== 'approved' || !item.approval?.ticket) {
+            throw new Error('La solicitud no está aprobada o no tiene un ticket asociado');
+        }
+        return item.approval.ticket;
     }
 
     private validateSelections(groups: TargetOptionGroup[], selections: TargetSelections): void {

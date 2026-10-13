@@ -155,6 +155,36 @@ export class SlackSource {
         return result;
     }
 
+    /**
+     * Responde en el hilo (#29) vía `chat.postMessage` con `thread_ts`, aprovechando la autenticación
+     * existente (token xoxb/xoxp/xoxc y cookie d de sesión web).
+     */
+    async replyThread(channelId: string, threadTs: string, text: string): Promise<void> {
+        const token = (await this.config.resolveSlackToken()).value;
+        if (!token) {
+            throw new Error('No hay token de Slack configurado');
+        }
+        const cookieD = (await this.config.resolveSlackCookieD()).value;
+        const headers: Record<string, string> = {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+        };
+        if (cookieD) {
+            headers.Cookie = `d=${cookieD}`;
+        }
+        const data = await triageJson({
+            method: 'POST',
+            url: `${SLACK_API}chat.postMessage`,
+            headers,
+            body: JSON.stringify({ channel: channelId, thread_ts: threadTs, text })
+        }, 'Slack');
+        if (prop(data, 'ok') !== true) {
+            const code = str(prop(data, 'error')) ?? 'unknown_error';
+            throw new Error(slackErrorMessage(code, channelId));
+        }
+    }
+
     async poll(): Promise<SourcePollOutput> {
         const result: TriageSourcePollResult = { source: 'slack', ok: true, fetched: 0, created: 0, updated: 0, ignored: 0 };
         const output: SourcePollOutput = { result, created: [], updated: [] };

@@ -23,6 +23,7 @@ import { GitCredentialsServerImpl } from './git-credentials-server';
 import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
 import { TriageClient, TriageServer, TriageServerPath } from '../common/triage-protocol';
 import { TriageConfigService } from './triage/triage-config';
+import { TriageFeedbackStore } from './triage/triage-feedback';
 import { TriageStore } from './triage/triage-store';
 import { TriageServerImpl } from './triage/triage-server';
 import { TriageBackendContribution } from './triage/triage-backend-contribution';
@@ -67,6 +68,7 @@ export default new ContainerModule(bind => {
 
     // Bandeja Pre-Kanban (#26). Reutiliza FokkusKeyStore y GitCredentialsStore ya bindeados arriba.
     bind(TriageConfigService).toSelf().inSingletonScope();
+    bind(TriageFeedbackStore).toSelf().inSingletonScope();
     bind(TriageStore).toSelf().inSingletonScope();
     bind(TriageServerImpl).toSelf().inSingletonScope();
     bind(TriageServer).toService(TriageServerImpl);

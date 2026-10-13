@@ -19,8 +19,10 @@ import { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
  * Reglas:
  * - Los secretos (token de Slack, client secret y refresh token de Gmail, API token de Jira) viajan SOLO del
  *   frontend al backend (save*). Ningún método los devuelve, ni enteros ni en fragmentos.
- * - Slack y Gmail son de SOLO LECTURA: el backend nunca escribe, reacciona, marca como leído ni responde.
- * - El único efecto externo es crear el ticket en el destino al aprobar (`approveItem`).
+ * - Slack y Gmail son de SOLO LECTURA para el sondeo: el backend nunca marca como leído ni modifica la bandeja.
+ * - El único efecto externo es crear el ticket en el destino al aprobar (`approveItem`) y, a petición explícita
+ *   del usuario, enviar la respuesta al cliente (`sendReply`, #29). Las reglas de auto-descarte (#28) no salen
+ *   de la máquina: solo filtran el ruido entrante durante `upsertFromSource`.
  * - Todos los mensajes de error van en español y nunca incluyen un secreto.
  */
 export const TriageServerPath = '/services/fokkus-triage';
@@ -161,6 +163,18 @@ export interface TriageItem {
     updatedAt: string;
     approval?: TriageApproval;
     discardReason?: string;
+    /** true = el descarte lo aplicó el motor de aprendizaje (#28), no el usuario. */
+    autoDiscarded?: boolean;
+    /** Regla que disparó el auto-descarte (motivo original de la regla aprendida). */
+    autoDiscardReason?: string;
+    /** true = ya se envió la respuesta al solicitante (#29). */
+    replySent?: boolean;
+    /** ISO 8601 del envío de la respuesta. */
+    replySentAt?: string;
+    /** Cómo se entregó: publicada/enviada (`sent`) o dejada como borrador en Gmail (`draft`). */
+    replyMode?: TriageReplyDeliveryMode;
+    /** ISO 8601 de la última vez que el usuario copió la respuesta para enviarla a mano (no cuenta como enviada). */
+    replyCopiedAt?: string;
     /** Último error al aprobar (el ítem sigue `pending`). Se limpia al aprobar con éxito. */
     lastError?: string;
 }
@@ -177,6 +191,34 @@ export interface TriageItemPatch {
     description?: string;
     category?: TriageCategory;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Aprendizaje por descarte (#28)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Regla aprendida de un descarte con motivo. Al descartar un ítem con `reason`, el backend infiere
+ * remitente/dominio y palabras clave del asunto/motivo; en los siguientes sondeos, todo candidato que
+ * cumpla la regla se guarda directamente como `discarded` (`autoDiscarded: true`).
+ */
+export interface TriageFeedbackRule {
+    id: string;
+    /** ISO 8601. */
+    createdAt: string;
+    /** Motivo original que escribió el usuario al descartar. */
+    reason: string;
+    /** Email exacto del remitente, si se conoce (Gmail siempre; Slack si el token tiene users:read.email). */
+    senderEmail?: string;
+    /** Dominio del remitente (parte tras la `@`), si hay email. */
+    senderDomain?: string;
+    /** Palabras clave normalizadas (minúsculas, sin tildes) del asunto/motivo, separadas por espacio. */
+    subjectPattern?: string;
+    /** Veces que la regla auto-descartó un candidato entrante. */
+    hits: number;
+}
+
+export const TRIAGE_FEEDBACK_RULE_ID_MAX = 80;
+export const TRIAGE_FEEDBACK_RULE_SUBJECT_MAX = 300;
 
 // ---------------------------------------------------------------------------------------------
 // Destinos agnósticos (Plane | Jira | GitHub Issues)
@@ -268,6 +310,58 @@ export interface TriageApproveResult {
     item: TriageItem;
     ticket: TriageTicketRef;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Respuesta al cliente tras aprobar (#29)
+// ---------------------------------------------------------------------------------------------
+
+/** Borrador de respuesta generado por el backend tras crear el ticket. El usuario lo edita antes de enviar. */
+export interface TriageReplyDraft {
+    itemId: string;
+    source: TriageSource;
+    /** Gmail: email del solicitante. Slack: canal legible (p. ej. `#soporte`). */
+    recipient: string;
+    /** Gmail: `Re: <asunto original>`. Slack: informativo (el envío usa el hilo). */
+    subject: string;
+    /** Cuerpo propuesto en español profesional (saludo, ticket, enlace y curso del requerimiento). */
+    body: string;
+    /** Clave legible del ticket (`MEL-32` / `owner/repo#45`). */
+    ticketKey: string;
+    /** URL web del ticket. */
+    ticketUrl: string;
+}
+
+/**
+ * `send`: el backend publica en el hilo de Slack o envía por Gmail (o deja un borrador si falta el scope).
+ * `clipboard`: el usuario copió el texto para enviarlo a mano; solo se registra `replyCopiedAt`, sin efecto externo.
+ */
+export type TriageSendReplyMode = 'send' | 'clipboard';
+
+/** Resultado de la entrega: `clipboard` = no se pudo entregar y el usuario debe copiar y enviar a mano. */
+export type TriageReplyDeliveryMode = 'sent' | 'draft' | 'clipboard';
+
+export interface TriageSendReplyInput {
+    itemId: string;
+    /** Texto final (ya editado/validado por el usuario). */
+    body: string;
+    /** Asunto editado (solo Gmail). Vacío u omitido = `Re: <asunto original>`. */
+    subject?: string;
+    /** Por defecto `send`. */
+    mode?: TriageSendReplyMode;
+}
+
+export interface TriageSendReplyResult {
+    ok: boolean;
+    /** Cómo terminó la entrega. Con `ok: false` y `clipboard`, la UI copia el texto al portapapeles. */
+    mode: TriageReplyDeliveryMode;
+    /** Texto legible en español. Nunca incluye un secreto. */
+    message?: string;
+    /** Si `ok` es false, motivo legible. */
+    error?: string;
+}
+
+export const TRIAGE_REPLY_BODY_MAX_LENGTH = 10000;
+export const TRIAGE_REPLY_SUBJECT_MAX_LENGTH = 300;
 
 // ---------------------------------------------------------------------------------------------
 // Configuración de fuentes (Slack, Gmail) y de Jira
@@ -458,4 +552,18 @@ export interface TriageServer extends RpcServer<TriageClient> {
      * Si el destino falla, el ítem sigue `pending` con `lastError` y se relanza el error.
      */
     approveItem(input: TriageApproveInput): Promise<TriageApproveResult>;
+
+    /** Reglas de auto-descarte aprendidas, más recientes primero (#28). */
+    getFeedbackRules(): Promise<TriageFeedbackRule[]>;
+    /** Elimina una regla aprendida (los ítems ya auto-descartados no se restauran). */
+    deleteFeedbackRule(ruleId: string): Promise<void>;
+
+    /** Borrador de respuesta para un ítem aprobado con ticket (#29). */
+    getReplyDraft(itemId: string): Promise<TriageReplyDraft>;
+    /**
+     * Envía la respuesta final al solicitante y marca el ítem `replySent` (#29). Con `mode: 'clipboard'` solo
+     * registra que el usuario la copió. Si Gmail no permite enviar ni dejar borrador, devuelve `ok: false` y el
+     * ítem NO queda marcado como respondido.
+     */
+    sendReply(input: TriageSendReplyInput): Promise<TriageSendReplyResult>;
 }

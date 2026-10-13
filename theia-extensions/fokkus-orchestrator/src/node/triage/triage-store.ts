@@ -23,6 +23,7 @@ import {
 } from '../../common/triage-protocol';
 import { classify } from './triage-classifier';
 import { writeJsonAtomic } from './triage-config';
+import { TriageFeedbackStore } from './triage-feedback';
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 2000;
@@ -92,7 +93,10 @@ export class TriageStore {
     private data: TriageItemsFile | undefined;
     private queue: Promise<unknown> = Promise.resolve();
 
-    constructor(@inject(ILogger) protected readonly logger: ILogger) { }
+    constructor(
+        @inject(ILogger) protected readonly logger: ILogger,
+        @inject(TriageFeedbackStore) protected readonly feedback: TriageFeedbackStore
+    ) { }
 
     private async load(): Promise<TriageItemsFile> {
         if (this.data) {
@@ -183,8 +187,9 @@ export class TriageStore {
         });
     }
 
-    upsertFromSource(candidate: TriageCandidate): Promise<{ outcome: UpsertOutcome; item: TriageItem }> {
-        return this.mutate(data => {
+    async upsertFromSource(candidate: TriageCandidate): Promise<{ outcome: UpsertOutcome; item: TriageItem }> {
+        const feedbackRule = await this.feedback.match(candidate);
+        const result = await this.mutate(data => {
             const now = new Date().toISOString();
             const originalText = truncate(candidate.originalText, TRIAGE_DESCRIPTION_MAX_LENGTH);
             const classification = classify({
@@ -197,6 +202,7 @@ export class TriageStore {
             });
             const existing = data.items.find(i => i.id === candidate.id);
             if (!existing) {
+                const autoDiscard = !!feedbackRule;
                 const item: TriageItem = {
                     id: candidate.id,
                     source: candidate.source,
@@ -215,7 +221,12 @@ export class TriageStore {
                     confidence: classification.confidence,
                     classificationReason: classification.reason,
                     edited: false,
-                    status: 'pending',
+                    status: autoDiscard ? 'discarded' : 'pending',
+                    ...(autoDiscard && feedbackRule ? {
+                        discardReason: `Auto-descartado por regla aprendida: ${feedbackRule.reason}`,
+                        autoDiscarded: true,
+                        autoDiscardReason: feedbackRule.reason
+                    } : {}),
                     updatedAt: now
                 };
                 data.items.push(item);
@@ -244,7 +255,12 @@ export class TriageStore {
                 }
             }
             return { outcome: 'updated' as const, item: { ...existing } };
-        }, result => result.outcome !== 'unchanged');
+        }, outcome => outcome.outcome !== 'unchanged');
+
+        if (feedbackRule && result.outcome === 'created') {
+            await this.feedback.incrementHits(feedbackRule.id).catch(() => undefined);
+        }
+        return result;
     }
 
     getSlackCursor(channelId: string): Promise<string | undefined> {

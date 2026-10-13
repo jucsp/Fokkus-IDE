@@ -111,10 +111,18 @@ const ALLOWLIST: readonly AllowRule[] = [
         service: 'Slack', method: 'GET', resolve: fixed('https://slack.com'),
         path: () => /^\/api\/(auth\.test|conversations\.history|conversations\.replies|conversations\.info|users\.info|chat\.getPermalink)$/
     },
+    {
+        service: 'Slack', method: 'POST', resolve: fixed('https://slack.com'),
+        path: () => /^\/api\/chat\.postMessage$/
+    },
     { service: 'Google', method: 'POST', resolve: fixed('https://oauth2.googleapis.com'), path: () => /^\/token$/ },
     {
         service: 'Gmail', method: 'GET', resolve: fixed('https://gmail.googleapis.com'),
         path: () => /^\/gmail\/v1\/users\/me\/(profile|labels|threads|threads\/[A-Za-z0-9]+|messages\/[A-Za-z0-9]+)$/
+    },
+    {
+        service: 'Gmail', method: 'POST', resolve: fixed('https://gmail.googleapis.com'),
+        path: () => /^\/gmail\/v1\/users\/me\/(messages\/send|drafts)$/
     },
     {
         service: 'GitHub', method: 'GET', resolve: fixed('https://api.github.com'),

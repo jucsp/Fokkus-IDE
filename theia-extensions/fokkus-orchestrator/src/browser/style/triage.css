@@ -326,3 +326,185 @@
     font-size: 0.72rem;
     white-space: pre;
 }
+
+/* Auto-descarte aprendido (#28) */
+
+.fokkus-triage-auto-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 1px solid rgba(167, 139, 250, 0.55);
+    border-radius: 999px;
+    background: rgba(124, 58, 237, 0.22);
+    color: #c4b5fd;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.4;
+    cursor: help;
+}
+
+/* La tarjeta descartada va atenuada; el badge debe seguir legible. */
+.fokkus-triage-card-discarded:has(.fokkus-triage-auto-badge) {
+    opacity: 0.8;
+}
+
+.fokkus-triage-toggle-active {
+    color: var(--theia-focusBorder, #37ecba);
+}
+
+.fokkus-triage-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fokkus-triage-rules-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.fokkus-triage-rule {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-left: 3px solid #7c3aed;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-triage-rule-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.fokkus-triage-rule-reason {
+    font-weight: 600;
+}
+
+.fokkus-triage-rule-delete:hover:not(:disabled) {
+    color: var(--theia-errorForeground, #f87171);
+}
+
+.fokkus-triage-rule-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
+.fokkus-triage-rule-keywords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.fokkus-triage-keyword {
+    padding: 0 6px;
+    border-radius: 4px;
+    background: var(--theia-badge-background, rgba(255, 255, 255, 0.1));
+    color: var(--theia-badge-foreground, inherit);
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.68rem;
+}
+
+/* Respuesta al cliente (#29) */
+
+.fokkus-triage-reply-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.fokkus-triage-reply-badge-draft {
+    background: rgba(234, 179, 8, 0.18);
+    color: #facc15;
+}
+
+.fokkus-triage-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.fokkus-triage-modal {
+    display: flex;
+    flex-direction: column;
+    width: min(620px, 100%);
+    max-height: calc(100vh - 32px);
+    border: 1px solid var(--theia-editorWidget-border, rgba(255, 255, 255, 0.12));
+    border-radius: 10px;
+    background: var(--theia-editorWidget-background, #181826);
+    color: var(--theia-foreground);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    font-family: var(--theia-ui-font-family);
+}
+
+.fokkus-triage-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.fokkus-triage-modal-header > span {
+    flex: 1 1 auto;
+}
+
+.fokkus-triage-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    overflow-y: auto;
+}
+
+.fokkus-triage-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+}
+
+.fokkus-triage-modal-footer .fokkus-backlog-apply {
+    width: auto;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.fokkus-triage-reply-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-triage-reply-body {
+    min-height: 180px;
+}

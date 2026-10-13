@@ -25,7 +25,8 @@ import {
 } from '../../common/triage-protocol';
 import { CredentialKeystore, FokkusKeyStore, validateStoredSecret } from '../git-credentials-store';
 
-const SLACK_TOKEN_RE = /^xox[bp]-[A-Za-z0-9-]{10,}$/;
+const SLACK_TOKEN_RE = /^xox[bpc]-[A-Za-z0-9-]{10,}$/;
+const SLACK_COOKIE_D_RE = /^xoxd-[A-Za-z0-9%._+/-]{10,}$/;
 const SLACK_CHANNEL_RE = /^[CGD][A-Z0-9]{6,}$/;
 const MAX_CHANNELS = 50;
 const GMAIL_CLIENT_ID_RE = /\.apps\.googleusercontent\.com$/;
@@ -54,6 +55,45 @@ function section(value: unknown): Record<string, unknown> {
 
 function optionalString(value: unknown): string | undefined {
     return typeof value === 'string' && value ? value : undefined;
+}
+
+interface ParsedGmailCredentials {
+    clientId: string;
+    clientSecret: string;
+    refreshToken: string;
+}
+
+/**
+ * Extrae client_id/client_secret/refresh_token de un JSON de credenciales de Google.
+ * Soporta el formato `client_secret.json` (`installed`/`web`) y el formato plano
+ * (`{ client_id, client_secret, refresh_token }`).
+ */
+function parseGmailCredentialsJson(raw: string): ParsedGmailCredentials {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        throw new Error('El JSON de credenciales de Google no es válido');
+    }
+    const root = section(parsed);
+    const installed = section(root.installed);
+    const web = section(root.web);
+    const hasClientId = (s: Record<string, unknown>) => typeof s.client_id === 'string' || typeof s.clientId === 'string';
+    const source = hasClientId(installed) || hasClientId(web) ? (hasClientId(installed) ? installed : web) : root;
+    const read = (snake: string, camel: string): string => {
+        // Algunos clientes MCP guardan el refresh_token en la raíz junto a `installed`/`web`.
+        const value = source[snake] ?? source[camel] ?? root[snake] ?? root[camel];
+        return typeof value === 'string' ? value.trim() : '';
+    };
+    const clientId = read('client_id', 'clientId');
+    if (!clientId) {
+        throw new Error('El JSON de credenciales de Google no contiene client_id');
+    }
+    return {
+        clientId,
+        clientSecret: read('client_secret', 'clientSecret'),
+        refreshToken: read('refresh_token', 'refreshToken')
+    };
 }
 
 /** Normaliza el JSON leído de disco (tolerante a campos ausentes o de otro tipo). */
@@ -215,7 +255,11 @@ export class TriageConfigService {
     }
 
     resolveSlackToken(): Promise<ResolvedSecret> {
-        return this.resolveSecret(['SLACK_TOKEN', 'FOKKUS_SLACK_TOKEN'], TriageCredentialAccounts.slackToken);
+        return this.resolveSecret(['SLACK_TOKEN', 'FOKKUS_SLACK_TOKEN', 'SLACK_MCP_XOXC_TOKEN'], TriageCredentialAccounts.slackToken);
+    }
+
+    resolveSlackCookieD(): Promise<ResolvedSecret> {
+        return this.resolveSecret(['SLACK_COOKIE_D', 'SLACK_MCP_XOXD_COOKIE'], TriageCredentialAccounts.slackCookieD);
     }
 
     resolveGmailClientSecret(): Promise<ResolvedSecret> {
@@ -233,6 +277,7 @@ export class TriageConfigService {
     async getStatus(): Promise<TriageConfigStatus> {
         const file = await this.read();
         const slackToken = await this.resolveSlackToken();
+        const slackCookieD = await this.resolveSlackCookieD();
         const gmailSecret = await this.resolveGmailClientSecret();
         const gmailRefresh = await this.resolveGmailRefreshToken();
         const jiraToken = await this.resolveJiraApiToken();
@@ -242,6 +287,8 @@ export class TriageConfigService {
                 enabled: file.slack.enabled,
                 configured: !!slackToken.value && file.slack.channelIds.length > 0,
                 tokenSource: slackToken.source,
+                cookieDSource: slackCookieD.source,
+                authMode: slackToken.value?.startsWith('xoxc-') || !!slackCookieD.value ? 'session' : 'bot',
                 channelIds: file.slack.channelIds,
                 ...(file.slack.teamName ? { teamName: file.slack.teamName } : {})
             },
@@ -268,7 +315,11 @@ export class TriageConfigService {
         const enabled = input?.enabled === true;
         const token = inputString(input?.token).trim();
         if (token && !SLACK_TOKEN_RE.test(token)) {
-            throw new Error('El token de Slack debe empezar por xoxb- o xoxp-');
+            throw new Error('El token de Slack debe empezar por xoxb-, xoxp- o xoxc-');
+        }
+        const cookieD = inputString(input?.cookieD).trim();
+        if (cookieD && !SLACK_COOKIE_D_RE.test(cookieD)) {
+            throw new Error('La cookie de Slack (d) debe empezar por xoxd-');
         }
         if (input?.channelIds !== undefined && !Array.isArray(input.channelIds)) {
             throw new Error('La lista de canales no es válida');
@@ -286,11 +337,24 @@ export class TriageConfigService {
         if (channelIds.length > MAX_CHANNELS) {
             throw new Error(`Se admiten como máximo ${MAX_CHANNELS} canales`);
         }
+        const hasCookie = !!cookieD || !!(await this.resolveSlackCookieD()).value;
+        if (token?.startsWith('xoxc-') && !hasCookie) {
+            throw new Error('El token de sesión de Slack (xoxc-) requiere la cookie d');
+        }
         if (enabled && !token && !(await this.resolveSlackToken()).value) {
             throw new Error('Falta el token de Slack');
         }
+        if (enabled && !token && (await this.resolveSlackToken()).value?.startsWith('xoxc-') && !hasCookie) {
+            throw new Error('El token de sesión de Slack (xoxc-) requiere la cookie d');
+        }
         if (token) {
             await this.setStored(TriageCredentialAccounts.slackToken, token);
+        }
+        if (token && !token.startsWith('xoxc-')) {
+            // El modo sesión se desactivó (token bot/usuario): la cookie d ya no aplica.
+            await this.deleteStored(TriageCredentialAccounts.slackCookieD);
+        } else if (cookieD) {
+            await this.setStored(TriageCredentialAccounts.slackCookieD, cookieD);
         }
         await this.update(file => {
             file.slack.enabled = enabled;
@@ -304,6 +368,7 @@ export class TriageConfigService {
 
     async clearSlack(): Promise<void> {
         await this.deleteStored(TriageCredentialAccounts.slackToken);
+        await this.deleteStored(TriageCredentialAccounts.slackCookieD);
         await this.update(file => {
             file.slack = { enabled: false, channelIds: [] };
         });
@@ -312,12 +377,14 @@ export class TriageConfigService {
 
     async saveGmail(input: GmailSourceConfigInput): Promise<void> {
         const enabled = input?.enabled === true;
-        const clientId = inputString(input?.clientId).trim();
+        const providedJson = inputString(input?.credentialsJson).trim();
+        const fromJson = providedJson ? parseGmailCredentialsJson(providedJson) : { clientId: '', clientSecret: '', refreshToken: '' };
+        const clientId = (inputString(input?.clientId).trim() || fromJson.clientId).trim();
         if ((enabled || clientId) && !GMAIL_CLIENT_ID_RE.test(clientId)) {
             throw new Error('El client id de Gmail debe terminar en .apps.googleusercontent.com');
         }
-        const clientSecret = inputString(input?.clientSecret).trim();
-        const refreshToken = inputString(input?.refreshToken).trim();
+        const clientSecret = (inputString(input?.clientSecret).trim() || fromJson.clientSecret).trim();
+        const refreshToken = (inputString(input?.refreshToken).trim() || fromJson.refreshToken).trim();
         const secret = clientSecret ? validateStoredSecret(clientSecret, 'El client secret de Gmail') : undefined;
         const refresh = refreshToken ? validateStoredSecret(refreshToken, 'El refresh token de Gmail') : undefined;
         const query = inputString(input?.query).trim();

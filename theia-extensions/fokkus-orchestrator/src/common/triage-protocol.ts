@@ -38,6 +38,7 @@ export const TRIAGE_DISCARD_REASON_MAX_LENGTH = 500;
 export const TRIAGE_KEYSTORE_SERVICE = 'fokkus-ide.triage';
 export const TriageCredentialAccounts = {
     slackToken: 'slack.token',
+    slackCookieD: 'slack.cookie_d',
     gmailClientSecret: 'gmail.clientSecret',
     gmailRefreshToken: 'gmail.refreshToken',
     jiraApiToken: 'jira.apiToken'
@@ -280,6 +281,10 @@ export interface SlackSourceConfigStatus {
     /** Hay token efectivo y al menos un canal. */
     configured: boolean;
     tokenSource: TriageSecretSource;
+    /** Origen de la cookie `d` de sesión web, si hay una. */
+    cookieDSource?: TriageSecretSource;
+    /** `session` si el token empieza por `xoxc-` o hay cookie `d`; si no, `bot`. */
+    authMode?: 'session' | 'bot';
     /** Ids de canal (`C…`/`G…`) a revisar. */
     channelIds: string[];
     /** Nombre del workspace (auth.test), si el token es válido. */
@@ -288,8 +293,10 @@ export interface SlackSourceConfigStatus {
 
 export interface SlackSourceConfigInput {
     enabled: boolean;
-    /** Bot/User token (`xoxb-`/`xoxp-`). Vacío o undefined = conservar el guardado. */
+    /** Bot/User/Sesión token (`xoxb-`/`xoxp-`/`xoxc-`). Vacío o undefined = conservar el guardado. */
     token?: string;
+    /** Cookie `d` de sesión web (`xoxd-`), necesaria con un token `xoxc-`. */
+    cookieD?: string;
     channelIds: string[];
 }
 
@@ -315,6 +322,8 @@ export interface GmailSourceConfigInput {
     refreshToken?: string;
     /** Vacío = TRIAGE_DEFAULT_GMAIL_QUERY. */
     query?: string;
+    /** JSON de credenciales OAuth de Google Workspace (client_secret.json o exportado con refresh_token). */
+    credentialsJson?: string;
 }
 
 export const TRIAGE_DEFAULT_GMAIL_QUERY = 'in:inbox -category:promotions -category:social newer_than:2d';

@@ -303,3 +303,26 @@
 .fokkus-triage-dot-ok {
     background: #22c55e;
 }
+
+/* Slack en modo sesión web (xoxc- + cookie d) y credenciales JSON de Gmail */
+
+.fokkus-triage-mode-badge {
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    background: var(--theia-badge-background);
+    color: var(--theia-badge-foreground);
+}
+
+.fokkus-triage-session-field {
+    padding-left: 8px;
+    border-left: 3px solid var(--theia-focusBorder, #37ecba);
+}
+
+.fokkus-triage-json {
+    min-height: 110px;
+    font-family: var(--theia-code-font-family, monospace);
+    font-size: 0.72rem;
+    white-space: pre;
+}

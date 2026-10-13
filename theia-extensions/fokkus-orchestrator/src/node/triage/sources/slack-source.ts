@@ -401,10 +401,15 @@ export class SlackSource {
 
     private async call(token: string, method: string, params: Record<string, string>, channelId?: string): Promise<unknown> {
         const query = new URLSearchParams(params).toString();
+        const cookieD = (await this.config.resolveSlackCookieD()).value;
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+        if (cookieD) {
+            headers.Cookie = `d=${cookieD}`;
+        }
         const data = await triageJson({
             method: 'GET',
             url: `${SLACK_API}${method}${query ? `?${query}` : ''}`,
-            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+            headers
         }, 'Slack');
         if (prop(data, 'ok') !== true) {
             const code = str(prop(data, 'error')) ?? 'unknown_error';

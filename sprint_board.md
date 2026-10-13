@@ -1,6 +1,7 @@
 # Sprint Board
 
 ## 📝 To Do (Pendiente)
+- [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #27: Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) conectado al Agente Líder.
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #25: Actividades en modo paralelo (Agente Líder no bloqueante).
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #24: Spec-Driven Development (SDD) Mode.
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #23: Unificar secciones de Pull Requests (GitHub y Bitbucket) en un solo Widget.

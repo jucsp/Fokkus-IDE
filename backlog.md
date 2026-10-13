@@ -25,6 +25,8 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
 ## Mejoras y Nuevas Funcionalidades (Enhancements)
+- [ ] #27 Feature: Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) conectado al Agente Líder.
+  - _Alcance:_ Burbuja de escritorio permanente transparente con animación líquida y onda de sonido, mute por clic, protección fullscreen/gaming con `setIgnoreMouseEvents`, pipeline de audio desacoplado (STT/TTS open source y nativo) sincronizado en vivo con el Agente Líder de Fokkus Team y soporte de chat sin workspace (fallback a `$HOME`).
 - [x] #26 Feature: Bandeja Pre-Kanban (Inbox/Triage) para solicitudes de Slack y Gmail con destino agnóstico (Plane, Jira, GitHub Issues).
   - _Implementado:_ vista lateral «Bandeja de solicitudes» (`fa-inbox`), sondeo cada 5 min de Slack y Gmail (solo lectura vía allowlist HTTP estricta) con agrupación por hilo, cursores incrementales y filtro anti-ruido, clasificador determinista en las 5 categorías (*Soporte*, *Creación de tickets del equipo*, *Consultas del cliente*, *Consultas desde la empresa*, *Consultas generales de clientes*), edición rápida, selector agnóstico de destino (`Plane` | `Jira` | `GitHub Issues`) con carga jerárquica dinámica de contenedores (proyectos/repos) y opciones (estados, módulos, tipos de issue, componentes, sprints, labels y milestones), deduplicación remota mediante `Fokkus-Triage-ID: <item.id>` en la descripción consultando tickets desde `receivedAt` en adelante antes de crear, aprobación idempotente y panel «Fuentes y conexiones» con secretos en el keystore del SO.
 - [ ] #25 Feature: Actividades en modo paralelo (Agente Líder no bloqueante).

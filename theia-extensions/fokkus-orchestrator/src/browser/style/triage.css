@@ -1,0 +1,305 @@
+/********************************************************************************
+ * Bandeja Pre-Kanban (Triage) — #26. Reutiliza las clases fokkus-backlog-* del
+ * panel Plane Backlog y agrega solo lo específico (prefijo fokkus-triage-).
+ ********************************************************************************/
+
+.fokkus-triage-hint {
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.fokkus-triage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.fokkus-triage-actions .fokkus-backlog-apply {
+    width: auto;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.fokkus-triage-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+/* Estado del sondeo */
+
+.fokkus-triage-poll-status,
+.fokkus-triage-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 0.75rem;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+}
+
+.fokkus-triage-count strong {
+    color: var(--theia-foreground);
+}
+
+.fokkus-triage-count-pending strong {
+    color: var(--theia-charts-yellow, #eab308);
+}
+
+/* Filtros */
+
+.fokkus-triage-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.fokkus-triage-filter-wide {
+    grid-column: 1 / -1;
+}
+
+/* Tarjeta */
+
+.fokkus-triage-card-discarded {
+    opacity: 0.65;
+}
+
+.fokkus-triage-source-icon {
+    flex: 0 0 auto;
+    width: 14px;
+    text-align: center;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+}
+
+.fokkus-triage-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 0 10px 8px;
+    color: var(--theia-descriptionForeground, rgba(230, 230, 239, 0.7));
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+
+.fokkus-triage-meta a {
+    color: var(--theia-textLink-foreground);
+    text-decoration: none;
+}
+
+.fokkus-triage-category {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.64rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #ffffff;
+    background: #6b7280;
+}
+
+.fokkus-triage-category-support { background: #dc2626; }
+.fokkus-triage-category-team-ticket { background: #2563eb; }
+.fokkus-triage-category-client-query { background: #059669; }
+.fokkus-triage-category-company-query { background: #7c3aed; }
+.fokkus-triage-category-general-client-query { background: #b45309; }
+
+.fokkus-triage-discarded-tag {
+    font-style: italic;
+}
+
+.fokkus-triage-error-tag {
+    color: var(--theia-errorForeground, #f87171);
+}
+
+.fokkus-triage-confidence {
+    font-weight: 400;
+    text-transform: none;
+}
+
+.fokkus-triage-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 10px 10px;
+}
+
+.fokkus-triage-textarea {
+    resize: vertical;
+    min-height: 90px;
+    font-family: var(--theia-ui-font-family);
+    line-height: 1.4;
+}
+
+.fokkus-triage-original-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.fokkus-triage-original-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.fokkus-triage-original {
+    margin: 0;
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.75rem;
+    line-height: 1.4;
+}
+
+/* Selector de destino */
+
+.fokkus-triage-target {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border: 1px dashed var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    border-radius: 8px;
+}
+
+.fokkus-triage-target-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.fokkus-triage-provider-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* En el panel lateral estrecho los botones pasan a la línea siguiente en vez de truncarse. */
+.fokkus-triage-provider {
+    flex: 1 1 auto;
+    padding: 5px 6px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    border-radius: 6px;
+    background: transparent;
+    color: var(--theia-foreground);
+    font-family: var(--theia-ui-font-family);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.fokkus-triage-provider:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.fokkus-triage-provider:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.fokkus-triage-provider-active {
+    border-color: var(--theia-focusBorder);
+    background: var(--theia-list-activeSelectionBackground, rgba(59, 130, 246, 0.25));
+    font-weight: 600;
+}
+
+.fokkus-triage-multi {
+    margin: 0;
+    padding: 0;
+    border: none;
+    min-width: 0;
+}
+
+.fokkus-triage-multi-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.fokkus-triage-chip-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px 2px 4px;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.12));
+    border-radius: 999px;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.fokkus-triage-chip-option input {
+    margin: 0;
+}
+
+.fokkus-triage-chip-option-checked {
+    border-color: var(--theia-focusBorder);
+}
+
+.fokkus-triage-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+/* Configuración */
+
+.fokkus-triage-config {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fokkus-triage-config-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 10px 10px;
+    min-width: 0;
+    border: 1px solid var(--theia-border-color0, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+}
+
+.fokkus-triage-config-title {
+    padding: 0 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.fokkus-triage-provider-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+}
+
+.fokkus-triage-provider-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.fokkus-triage-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6b7280;
+}
+
+.fokkus-triage-dot-ok {
+    background: #22c55e;
+}

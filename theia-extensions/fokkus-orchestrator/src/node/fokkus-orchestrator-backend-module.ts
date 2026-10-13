@@ -20,6 +20,12 @@ import { GitHubServerImpl } from './github-server';
 import { BitbucketServerImpl } from './bitbucket-server';
 import { FokkusKeyStore, GitCredentialsStore } from './git-credentials-store';
 import { GitCredentialsServerImpl } from './git-credentials-server';
+import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
+import { TriageClient, TriageServer, TriageServerPath } from '../common/triage-protocol';
+import { TriageConfigService } from './triage/triage-config';
+import { TriageStore } from './triage/triage-store';
+import { TriageServerImpl } from './triage/triage-server';
+import { TriageBackendContribution } from './triage/triage-backend-contribution';
 
 export default new ContainerModule(bind => {
     bind(FokkusOrchestratorServer).to(FokkusOrchestratorServerImpl).inSingletonScope();
@@ -58,4 +64,20 @@ export default new ContainerModule(bind => {
             context.container.get<GitCredentialsServer>(GitCredentialsServer)
         )
     ).inSingletonScope();
+
+    // Bandeja Pre-Kanban (#26). Reutiliza FokkusKeyStore y GitCredentialsStore ya bindeados arriba.
+    bind(TriageConfigService).toSelf().inSingletonScope();
+    bind(TriageStore).toSelf().inSingletonScope();
+    bind(TriageServerImpl).toSelf().inSingletonScope();
+    bind(TriageServer).toService(TriageServerImpl);
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler<TriageClient>(TriageServerPath, client => {
+            const server = context.container.get<TriageServerImpl>(TriageServerImpl);
+            server.addClient(client);
+            client.onDidCloseConnection(() => server.removeClient(client));
+            return server;
+        })
+    ).inSingletonScope();
+    bind(TriageBackendContribution).toSelf().inSingletonScope();
+    bind(BackendApplicationContribution).toService(TriageBackendContribution);
 });

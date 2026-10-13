@@ -23,8 +23,9 @@ import {
     PlaneState
 } from '../common/plane-protocol';
 
-const CONFIG_DIR = join(os.homedir(), '.fokkus');
-const CONFIG_PATH = join(CONFIG_DIR, 'plane.json');
+/** Rutas resueltas en tiempo de llamada (los tests cambian HOME). */
+const configDir = (): string => join(os.homedir(), '.fokkus');
+const configPath = (): string => join(configDir(), 'plane.json');
 const DEFAULT_BASE_URL = 'https://plane.garagelabs.cl';
 const DEFAULT_WORKSPACE = 'garage-labs';
 const REQUEST_TIMEOUT_MS = 20000;
@@ -42,10 +43,35 @@ interface PlaneConfigFile {
     apiKey?: string;
 }
 
-interface ResolvedConfig {
+export interface ResolvedPlaneConfig {
     baseUrl: string;
     workspace: string;
     apiKey: string;
+}
+
+type ResolvedConfig = ResolvedPlaneConfig;
+
+async function loadPlaneConfigFile(): Promise<PlaneConfigFile> {
+    try {
+        const raw = await fs.readFile(configPath(), 'utf8');
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+            return parsed as PlaneConfigFile;
+        }
+    } catch {
+        // Sin archivo o JSON corrupto: usar valores por defecto.
+    }
+    return {};
+}
+
+/** Config efectiva de Plane: env > ~/.fokkus/plane.json > valores por defecto. La reutiliza la Bandeja (#26). */
+export async function resolvePlaneConfig(): Promise<ResolvedPlaneConfig> {
+    const file = await loadPlaneConfigFile();
+    return {
+        baseUrl: (process.env.PLANE_BASE_URL || file.baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, ''),
+        workspace: (process.env.PLANE_WORKSPACE || file.workspace || DEFAULT_WORKSPACE).trim(),
+        apiKey: (process.env.PLANE_API_KEY || file.apiKey || '').trim()
+    };
 }
 
 interface PlaneApiMember {
@@ -116,10 +142,10 @@ export class PlaneServerImpl implements PlaneServer {
             file.apiKey = apiKey;
         }
 
-        await fs.mkdir(CONFIG_DIR, { recursive: true });
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(file, undefined, 4) + '\n', { mode: 0o600 });
+        await fs.mkdir(configDir(), { recursive: true });
+        await fs.writeFile(configPath(), JSON.stringify(file, undefined, 4) + '\n', { mode: 0o600 });
         // `mode` solo aplica al crear el archivo; si ya existía con otros permisos, se corrigen.
-        await fs.chmod(CONFIG_PATH, 0o600);
+        await fs.chmod(configPath(), 0o600);
         this.cachedProjects = undefined;
         this.imageCache.clear();
         this.pagesCache.clear();
@@ -307,26 +333,12 @@ export class PlaneServerImpl implements PlaneServer {
         }
     }
 
-    private async resolveConfig(): Promise<ResolvedConfig> {
-        const file = await this.loadConfigFile();
-        return {
-            baseUrl: (process.env.PLANE_BASE_URL || file.baseUrl || DEFAULT_BASE_URL).trim().replace(/\/+$/, ''),
-            workspace: (process.env.PLANE_WORKSPACE || file.workspace || DEFAULT_WORKSPACE).trim(),
-            apiKey: (process.env.PLANE_API_KEY || file.apiKey || '').trim()
-        };
+    private resolveConfig(): Promise<ResolvedConfig> {
+        return resolvePlaneConfig();
     }
 
-    private async loadConfigFile(): Promise<PlaneConfigFile> {
-        try {
-            const raw = await fs.readFile(CONFIG_PATH, 'utf8');
-            const parsed: unknown = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                return parsed as PlaneConfigFile;
-            }
-        } catch {
-            // Sin archivo o JSON corrupto: usar valores por defecto.
-        }
-        return {};
+    private loadConfigFile(): Promise<PlaneConfigFile> {
+        return loadPlaneConfigFile();
     }
 
     private validateBaseUrl(raw: string): string {

@@ -14,6 +14,7 @@ import '../../src/browser/style/plane-kanban.css';
 import '../../src/browser/style/github.css';
 import '../../src/browser/style/github-issues.css';
 import '../../src/browser/style/git-providers.css';
+import '../../src/browser/style/triage.css';
 
 import { bindViewContribution, FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { CommandContribution, PreferenceContribution } from '@theia/core/lib/common';
@@ -24,6 +25,7 @@ import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../commo
 import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
+import { TriageServer, TriageServerPath } from '../common/triage-protocol';
 import { BitbucketPullRequestsWidget } from './bitbucket-pull-requests-widget';
 import { BitbucketScmContribution } from './bitbucket-scm-contribution';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
@@ -47,6 +49,9 @@ import { PlaneBacklogWidget } from './plane-backlog-widget';
 import { PlaneKanbanContribution } from './plane-kanban-contribution';
 import { PlaneKanbanService } from './plane-kanban-service';
 import { PlaneKanbanWidget } from './plane-kanban-widget';
+import { TriageInboxContribution } from './triage-contribution';
+import { TriageInboxWidget } from './triage-inbox-widget';
+import { TriageClientImpl, TriageNotificationContribution } from './triage-service';
 
 export default new ContainerModule(bind => {
     // bindViewContribution already binds MenuContribution (and CommandContribution/KeybindingContribution)
@@ -154,4 +159,20 @@ export default new ContainerModule(bind => {
     bind(PreferenceNodeRendererContribution).toService(GitProvidersPreferenceRendererContribution);
     bind(GitProvidersCommandContribution).toSelf().inSingletonScope();
     bind(CommandContribution).toService(GitProvidersCommandContribution);
+
+    // Bandeja Pre-Kanban (#26): el proxy lleva el cliente para recibir los eventos del sondeo.
+    bind(TriageClientImpl).toSelf().inSingletonScope();
+    bind(TriageServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<TriageServer>(TriageServerPath, context.container.get(TriageClientImpl));
+    }).inSingletonScope();
+    bindViewContribution(bind, TriageInboxContribution);
+    bind(FrontendApplicationContribution).toService(TriageInboxContribution);
+    bind(TriageInboxWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: TriageInboxWidget.ID,
+        createWidget: () => context.container.get<TriageInboxWidget>(TriageInboxWidget)
+    })).inSingletonScope();
+    bind(TriageNotificationContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(TriageNotificationContribution);
 });

@@ -1,6 +1,9 @@
 # Sprint Board
 
 ## 📝 To Do (Pendiente)
+- [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #30: Triaje por Voz con Asistente Jarvis (Notificaciones Proactivas y Aprobación Manos Libres).
+- [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #29: Borrador de Respuesta al Cliente al Aprobar con Validación Humana (Human-in-the-Loop AI Reply).
+- [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #28: Aprendizaje por Rechazo en Bandeja (Feedback-driven Triage y Auto-Descarte Inteligente).
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #27: Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) conectado al Agente Líder.
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #25: Actividades en modo paralelo (Agente Líder no bloqueante).
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #24: Spec-Driven Development (SDD) Mode.

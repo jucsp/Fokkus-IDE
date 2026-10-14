@@ -37,6 +37,7 @@ import {
 } from '../common/fokkus-orchestrator-protocol';
 import { resolveApprovalState as computeApprovalState, ResolvedApprovalState } from '../common/fokkus-approval';
 import { readBitbucketCredentials } from './bitbucket-credentials';
+import { filterActiveBacklog, formatRecentChatHistory, isConversationalOrSimplePrompt } from './orchestrator-prompt-logic';
 import { GitCredentialsStore } from './git-credentials-store';
 import { inferAudioExtension, JARVIS_STT_SCRIPT, JARVIS_STT_TIMEOUT_MS, normalizeSttLanguage, parseJarvisSttOutput } from './jarvis-stt-script';
 
@@ -388,7 +389,16 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         } else {
             body = this.buildAutoDirectiveBody();
         }
-        return `${header}\n${body}`;
+        return `${header}\n${body}${this.buildExecutionModeConversationalClause()}`;
+    }
+
+    /** Cláusula transversal: las preguntas rápidas no deben forzar planes ni bloques de aprobación. */
+    private buildExecutionModeConversationalClause(): string {
+        return [
+            '',
+            'PARA PREGUNTAS RÁPIDAS, ACLARACIONES O CONVERSACIÓN QUE NO ALTEREN CÓDIGO:',
+            'responde directamente de forma breve y natural, sin redactar planes ni emitir bloques ' + APPROVAL_REQUEST_FENCE + '.'
+        ].join('\n');
     }
 
     /** Reglas obligatorias de la FASE 1 (planificación en primer plano, solo lectura). */
@@ -533,6 +543,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         edges?: SwarmEdge[]
     ): Promise<string> {
         const sections: string[] = [];
+        const conversational = isConversationalOrSimplePrompt(prompt);
 
         const primaryRole = this.findPrimaryRole(team, roles);
         if (primaryRole?.systemPrompt && primaryRole.systemPrompt.trim().length > 0) {
@@ -549,51 +560,55 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             sections.push(`[JERARQUÍA DEL EQUIPO]\n${hierarchy}`);
         }
 
-        if (chatHistory && chatHistory.length > 0) {
-            const historyText = chatHistory.map(msg => `[${msg.role.toUpperCase()}]: ${msg.content}`).join('\n\n');
+        const historyText = formatRecentChatHistory(chatHistory);
+        if (historyText) {
             sections.push(`[HISTORIAL DE CONVERSACIÓN RECIENTE]\n${historyText}`);
         }
 
         // Contexto jerárquico del proyecto: si el backlog está vacío (solo template),
         // se expone la lista de archivos raíz para que el agente investigue el código.
-        const backlogPath = join(cwd, 'backlog.md');
-        let backlogContent = '';
-        try {
-            backlogContent = await fs.readFile(backlogPath, 'utf8');
-        } catch {
-            backlogContent = '';
-        }
-
-        const backlogIsTemplate = !backlogContent ||
-            backlogContent.trim() === '' ||
-            backlogContent.trim() === '# Product Backlog' ||
-            backlogContent.trim() === '# Product Backlog\n\nAquí puedes documentar las historias de usuario de tu proyecto.';
-
-        if (backlogContent.trim().length > 0 && !backlogIsTemplate) {
-            sections.push(`[BACKLOG DEL PROYECTO]\n${backlogContent.trim()}`);
-        } else {
-            let rootFiles: string[] = [];
+        // En turnos conversacionales se omite para responder de inmediato sin saturar el prompt.
+        if (!conversational) {
+            const backlogPath = join(cwd, 'backlog.md');
+            let backlogContent = '';
             try {
-                const entries = await fs.readdir(cwd);
-                rootFiles = entries.filter(name => !name.startsWith('.'));
+                backlogContent = await fs.readFile(backlogPath, 'utf8');
             } catch {
-                rootFiles = [];
+                backlogContent = '';
             }
+
+            const backlogIsTemplate = !backlogContent ||
+                backlogContent.trim() === '' ||
+                backlogContent.trim() === '# Product Backlog' ||
+                backlogContent.trim() === '# Product Backlog\n\nAquí puedes documentar las historias de usuario de tu proyecto.';
+
+            if (backlogContent.trim().length > 0 && !backlogIsTemplate) {
+                sections.push(`[BACKLOG DEL PROYECTO]\n${filterActiveBacklog(backlogContent)}`);
+            } else {
+                let rootFiles: string[] = [];
+                try {
+                    const entries = await fs.readdir(cwd);
+                    rootFiles = entries.filter(name => !name.startsWith('.'));
+                } catch {
+                    rootFiles = [];
+                }
+                sections.push(
+                    `[ARCHIVOS EN LA RAÍZ DEL WORKSPACE]\n` +
+                    (rootFiles.length > 0 ? rootFiles.join('\n') : '(no se pudieron listar los archivos de la raíz)')
+                );
+            }
+
             sections.push(
-                `[ARCHIVOS EN LA RAÍZ DEL WORKSPACE]\n` +
-                (rootFiles.length > 0 ? rootFiles.join('\n') : '(no se pudieron listar los archivos de la raíz)')
+                `[PROTOCOLO DE CONTEXTO JERÁRQUICO]\n` +
+                `Directorio del proyecto abierto en el editor: ${cwd}\n` +
+                `Si el historial afirma que no hay proyecto o que el workspace está vacío, verifícalo contra el disco antes de repetirlo: el listado de archivos de este prompt es la fuente de verdad.\n` +
+                `Para resolver la tarea, consulta las fuentes de contexto en este orden estricto:\n` +
+                `1° Historial del Chat (si existe en este prompt).\n` +
+                `2° Backlog del proyecto (o, si está vacío, la lista de archivos de la raíz del workspace).\n` +
+                '3° El Proyecto en sí: lee e investiga el código fuente real del workspace. ' +
+                'Si es necesario, delega en los agentes del equipo (sub-agentes) para tareas específicas.'
             );
         }
-
-        sections.push(
-            `[PROTOCOLO DE CONTEXTO JERÁRQUICO]\n` +
-            `Directorio del proyecto abierto en el editor: ${cwd}\n` +
-            `Si el historial afirma que no hay proyecto o que el workspace está vacío, verifícalo contra el disco antes de repetirlo: el listado de archivos de este prompt es la fuente de verdad.\n` +
-            `Para resolver la tarea, consulta las fuentes de contexto en este orden estricto:\n` +
-            `1° Historial del Chat (si existe en este prompt).\n` +
-            `2° Backlog del proyecto (o, si está vacío, la lista de archivos de la raíz del workspace).\n` +
-            `3° El Proyecto en sí: lee e investiga el código fuente real del workspace. Si es necesario, delega en los agentes del equipo (sub-agentes) para tareas específicas.`
-        );
 
         sections.push(`[INSTRUCCIÓN DEL USUARIO]\n${prompt}`);
 
@@ -604,17 +619,31 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         );
 
         const approvalState = this.resolveApprovalState(chatHistory);
-        const modeDirective = this.buildExecutionModeDirective(mode, approvalState);
-        if (modeDirective) {
-            sections.push(modeDirective);
-            sections.push(this.buildApprovalToolSection());
-            const reminder = this.buildPhaseReminder(mode, approvalState);
-            if (reminder) {
-                sections.push(reminder);
+        if (conversational && isExecutionMode(mode)) {
+            sections.push(this.buildConversationalDirective());
+        } else {
+            const modeDirective = this.buildExecutionModeDirective(mode, approvalState);
+            if (modeDirective) {
+                sections.push(modeDirective);
+                sections.push(this.buildApprovalToolSection());
+                const reminder = this.buildPhaseReminder(mode, approvalState);
+                if (reminder) {
+                    sections.push(reminder);
+                }
             }
         }
 
         return sections.join('\n\n');
+    }
+
+    /** Directiva ligera para turnos conversacionales: respuesta inmediata y breve. */
+    private buildConversationalDirective(): string {
+        return [
+            '[DIRECTIVA: RESPUESTA DIRECTA Y ÁGIL]',
+            'El usuario envía un mensaje conversacional, saludo o prueba de audio.',
+            'Responde de inmediato de forma natural, breve, amigable y al grano (1-2 frases),',
+            'sin investigar archivos ni redactar planes de implementación.'
+        ].join('\n');
     }
 
     private buildTeamContext(team: TeamAssignments, providers: ProvidersState, roles?: RolesState): string[] {
@@ -626,11 +655,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             }
             const role = roles?.[roleId];
             const roleLabel = role ? `${role.name} (${roleId})` : roleId;
-            let line = `- Rol: ${roleLabel} | Agente Asignado: ${provider.name}`;
-            if (role?.systemPrompt && role.systemPrompt.trim().length > 0) {
-                line += `\n  Reglas Base: ${role.systemPrompt.trim()}`;
-            }
-            lines.push(line);
+            lines.push(`- Rol: ${roleLabel} | Agente: ${provider.name}`);
         }
         return lines;
     }

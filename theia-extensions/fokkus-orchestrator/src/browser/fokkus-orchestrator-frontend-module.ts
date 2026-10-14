@@ -25,6 +25,7 @@ import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../commo
 import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { JarvisAudioService } from '../common/jarvis-protocol';
+import { JarvisCompanionServer, JarvisCompanionServerPath } from '../common/jarvis-companion-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { TriageServer, TriageServerPath } from '../common/triage-protocol';
 import { BitbucketPullRequestsWidget } from './bitbucket-pull-requests-widget';
@@ -47,6 +48,7 @@ import { GitHubKanbanWidget } from './github-kanban-widget';
 import { GitHubPullRequestsWidget } from './github-pull-requests-widget';
 import { GitHubScmContribution } from './github-scm-contribution';
 import { JarvisAudioServiceImpl } from './jarvis-audio-service';
+import { JarvisCompanionContribution } from './jarvis-companion-contribution';
 import { JarvisContribution } from './jarvis-contribution';
 import { JarvisController } from './jarvis-controller';
 import { PlaneBacklogContribution } from './plane-backlog-contribution';
@@ -190,4 +192,14 @@ export default new ContainerModule(bind => {
     })).inSingletonScope();
     bind(TriageNotificationContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(TriageNotificationContribution);
+
+    // Conector del compañero Jarvis: proxy RPC hacia el backend + barra de estado, comandos y
+    // reenvío de eventos del Swarm/Bandeja. Desvincula los viejos módulos overlay de Electron.
+    bind(JarvisCompanionServer).toDynamicValue(context => {
+        const provider = context.container.get<ServiceConnectionProvider>(RemoteConnectionProvider);
+        return provider.createProxy<JarvisCompanionServer>(JarvisCompanionServerPath);
+    }).inSingletonScope();
+    bind(JarvisCompanionContribution).toSelf().inSingletonScope();
+    bind(CommandContribution).toService(JarvisCompanionContribution);
+    bind(FrontendApplicationContribution).toService(JarvisCompanionContribution);
 });

@@ -14,10 +14,12 @@ import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
 import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protocol';
 import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
+import { JarvisCompanionServer, JarvisCompanionServerPath } from '../common/jarvis-companion-protocol';
 import { FokkusOrchestratorServerImpl } from './fokkus-orchestrator-server';
 import { PlaneServerImpl } from './plane-server';
 import { GitHubServerImpl } from './github-server';
 import { BitbucketServerImpl } from './bitbucket-server';
+import { JarvisCompanionServerImpl } from './jarvis-companion-server';
 import { FokkusKeyStore, GitCredentialsStore } from './git-credentials-store';
 import { GitCredentialsServerImpl } from './git-credentials-server';
 import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
@@ -54,6 +56,15 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler(BitbucketServerPath, () =>
             context.container.get<BitbucketServer>(BitbucketServer)
+        )
+    ).inSingletonScope();
+
+    // Conector del compañero Jarvis: detecta `fokkus-jarvis`, habla por el socket IPC y
+    // reenvía los eventos del Swarm y de la Bandeja (sustituye a la ventana overlay de Electron).
+    bind(JarvisCompanionServer).to(JarvisCompanionServerImpl).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(context =>
+        new RpcConnectionHandler(JarvisCompanionServerPath, () =>
+            context.container.get<JarvisCompanionServer>(JarvisCompanionServer)
         )
     ).inSingletonScope();
 

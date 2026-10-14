@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "fokkus-orchestrator-ext",
-  "version": "1.8.5",
+  "version": "1.9.0",
   "description": "Fokkus IDE Orchestrator - side panel to recruit AI agents",
   "keywords": [
     "theia-extension"
@@ -47,10 +47,6 @@
     {
       "frontend": "lib/browser/fokkus-orchestrator-frontend-module",
       "backend": "lib/node/fokkus-orchestrator-backend-module"
-    },
-    {
-      "frontendElectron": "lib/electron-browser/jarvis-electron-frontend-module",
-      "electronMain": "lib/electron-main/jarvis-overlay-main-module"
     }
   ],
   "peerDependencies": {

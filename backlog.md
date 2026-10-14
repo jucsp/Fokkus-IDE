@@ -24,6 +24,13 @@ Este documento contiene el listado de funcionalidades, mejoras y correcciones pe
 - [x] #9 No se puede usar WSL en Windows 11.
 - [x] #8 Texto opaco o poco visible en la UI del IDE (Windows 11).
 
+- [ ] #31 Mejora: Flotabilidad Multiplataforma de Jarvis (Overlay Frameless 100% Transparente y Persistencia en Escritorios Virtuales / Wayland / Caelestia / Windows / macOS).
+  - _Problema:_ Al activar 'Flotar sobre otras ventanas' en Linux (Fedora KDE / Wayland / Caelestia), se abre una ventana secundaria con marco nativo del sistema operativo, barra de menú ('File Edit View Window') y fondo blanco opaco, perdiendo la transparencia y descontextualizándose en escritorios virtuales (workspaces).
+  - _Solución técnica propuesta:_
+    1. Garantizar creación de BrowserWindow en Electron Main con `frame: false`, `transparent: true`, `backgroundColor: '#00000000'`, `hasShadow: false` y `window.setMenu(null)`.
+    2. Evitar la colisión con el `setWindowOpenHandler` tardío de Theia asegurando que `webContents.getAllWebContents()` queden cubiertos desde `onStart()`, o usando una ventana `BrowserWindow` nativa dedicada (`jarvis-overlay.html`).
+    3. Persistencia entre escritorios virtuales: aplicar `window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })` y `type: 'utility'` / `'panel'` para que la burbuja permanezca estática en pantalla al conmutar entre workspaces horizontales en KWin / Caelestia / tiling WMs.
+    4. Garantizar transparencia 100% libre de layouts Lumino / Theia.
 - [ ] #30 Feature: Triaje por Voz con Asistente Jarvis (Notificaciones Proactivas y Aprobación Manos Libres).
   - _Alcance:_ Jarvis anuncia solicitudes entrantes por voz al usuario mientras programa o en segundo plano, lectura del resumen/detalle por comando de voz, aprobación hacia Plane/Jira/GitHub y validación de borradores de respuesta (#29) de forma 100 % manos libres con respeto al estado de mute/juegos.
 - [x] #29 Feature: Borrador de Respuesta al Cliente al Aprobar con Validación Humana (Human-in-the-Loop AI Reply).

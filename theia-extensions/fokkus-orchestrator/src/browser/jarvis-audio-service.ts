@@ -100,7 +100,9 @@ interface SpeechRecognizerConstructor {
  *   falla con 'network') se usa un pipeline LOCAL: MediaRecorder + `transcribeAudio` del backend
  *   (faster-whisper), que no depende de los servidores de Google.
  * - Analizador: `getUserMedia` + `AudioContext` + `AnalyserNode` para emitir el RMS (0..1).
- * - TTS: `speechSynthesis` eligiendo la mejor voz en español disponible.
+ * - TTS: `speechSynthesis` eligiendo la mejor voz en español disponible; en Electron (o si no hay
+ *   voces locales) se usa el backend `synthesizeSpeech` (edge-tts → espeak-ng) reproducido con HTML5
+ *   `Audio`, porque en Linux `speechSynthesis` depende de `speech-dispatcher` y suele no emitir nada.
  * - Despacho: entrega el turno al chat (`FokkusChatDispatcher`), que llama a `dispatchToSwarm`, y
  *   captura la respuesta en `FokkusSwarmEvents` para locutarla. (El `onDidDispatchSwarm` del proxy
  *   RPC no sirve: Theia trata las propiedades `on*` del proxy como notificaciones al backend.)
@@ -153,6 +155,10 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
 
     protected speakingSimulationId: number | undefined;
     protected currentUtterance: SpeechSynthesisUtterance | undefined;
+    /** Elemento HTML5 `Audio` en reproducción por el TTS de backend (edge-tts/espeak-ng). */
+    protected currentAudioElement: HTMLAudioElement | undefined;
+    /** Sube en cada `speak`/`stopSpeaking`: descarta la síntesis de backend de una locución anterior. */
+    protected speechGeneration: number = 0;
 
     protected voiceDispatchActive: boolean = false;
     protected voiceDispatchPrompt: string | undefined;
@@ -248,12 +254,16 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
 
     public speak(text: string): void {
         const trimmed = text.trim();
-        if (trimmed.length === 0 || this.muted || !this.isTtsSupported()) {
+        if (trimmed.length === 0 || this.muted) {
             this.setState('idle');
             return;
         }
         this.stopSpeaking();
         this.setState('speaking');
+        if (this.shouldUseBackendTts()) {
+            this.speakViaBackend(trimmed);
+            return;
+        }
         const utterance = new SpeechSynthesisUtterance(trimmed);
         const voice = this.pickVoice();
         if (voice) {
@@ -270,7 +280,13 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     }
 
     public stopSpeaking(): void {
+        this.speechGeneration++;
         this.stopSpeakingSimulation();
+        if (this.currentAudioElement) {
+            this.currentAudioElement.pause();
+            this.currentAudioElement.currentTime = 0;
+            this.currentAudioElement = undefined;
+        }
         this.currentUtterance = undefined;
         if (this.isTtsSupported()) {
             window.speechSynthesis.cancel();
@@ -844,6 +860,52 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         return typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
     }
 
+    /**
+     * ¿Sintetizar la voz en el backend en vez de `window.speechSynthesis`? En Electron (o si no hay
+     * voces locales: típico en Linux sin `speech-dispatcher`) se usa el backend para emitir sonido
+     * de verdad, reproducido con HTML5 `Audio`.
+     */
+    protected shouldUseBackendTts(): boolean {
+        return environment.electron.is() || !this.isTtsSupported() ||
+            (typeof window !== 'undefined' && !!window.speechSynthesis && window.speechSynthesis.getVoices().length === 0);
+    }
+
+    /** Sintetiza en el backend (edge-tts → espeak-ng) y reproduce el resultado con HTML5 `Audio`. */
+    protected speakViaBackend(text: string): void {
+        // Una locución nueva o un stop invalidan esta: su audio no debe sonar ni cerrar la siguiente.
+        const generation = this.speechGeneration;
+        const isCurrent = (): boolean => generation === this.speechGeneration;
+        this.startSpeakingSimulation();
+        this.orchestratorServer.synthesizeSpeech(text, this.config.voiceLang)
+            .then(result => {
+                if (!isCurrent() || this.muted || this.getState() !== 'speaking') {
+                    return;
+                }
+                const audio = new Audio(`data:${result.mimeType};base64,${result.base64Audio}`);
+                this.currentAudioElement = audio;
+                const finish = (): void => {
+                    if (isCurrent()) {
+                        this.finishSpeaking();
+                    }
+                };
+                audio.onended = finish;
+                audio.onerror = event => {
+                    this.warn('Error reproduciendo audio TTS', event);
+                    finish();
+                };
+                audio.play().catch(error => {
+                    this.warn('Error al iniciar reproducción', error);
+                    finish();
+                });
+            })
+            .catch(error => {
+                this.warn('No se pudo sintetizar la respuesta de voz', error);
+                if (isCurrent()) {
+                    this.finishSpeaking();
+                }
+            });
+    }
+
     protected pickVoice(): SpeechSynthesisVoice | undefined {
         if (!this.isTtsSupported()) {
             return undefined;
@@ -894,6 +956,7 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected finishSpeaking(): void {
         this.stopSpeakingSimulation();
         this.currentUtterance = undefined;
+        this.currentAudioElement = undefined;
         if (this.getState() === 'speaking') {
             this.setState('idle');
         }

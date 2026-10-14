@@ -31,6 +31,7 @@ import {
     SwarmAgentResult,
     SwarmDispatchResult,
     SwarmEdge,
+    SynthesizedAudio,
     TeamAssignments,
     TeamConfiguration,
     isExecutionMode
@@ -75,6 +76,11 @@ const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm
 
 -->
 `;
+
+/** Tope para edge-tts: si no responde a tiempo (p. ej. sin red), se hace fallback a espeak-ng. */
+const JARVIS_TTS_EDGE_TIMEOUT_MS = 8000;
+/** Tope para espeak-ng (offline y casi instantáneo; margen para textos largos). */
+const JARVIS_TTS_ESPEAK_TIMEOUT_MS = 15000;
 
 class AgentCancelledError extends Error {
     constructor() {
@@ -1040,6 +1046,102 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     private isEnoent(error: unknown): boolean {
         return !!error && typeof error === 'object' && (error as NodeJS.ErrnoException).code === 'ENOENT';
+    }
+
+    /**
+     * Sintetiza `text` a voz con un pipeline dual: primero edge-tts (voz neuronal, requiere red y el
+     * comando `edge-tts` ya instalado en el PATH; nunca se descarga con `uvx`/pip porque PyPI está
+     * vetado) y, si falta, falla o tarda demasiado, espeak-ng (100 % offline). El texto va en un
+     * archivo (`--file` / `-f`): así un texto que empiece por `-` no se toma como opción. Devuelve el
+     * audio en base64 para reproducirlo en el frontend con HTML5 `Audio`, evitando
+     * `window.speechSynthesis` (que en Electron/Linux suele devolver cero voces y no emite sonido).
+     */
+    async synthesizeSpeech(text: string, lang?: string): Promise<SynthesizedAudio> {
+        const cleanText = text.replace(/\s+/g, ' ').trim();
+        if (cleanText.length === 0) {
+            throw new Error('No hay texto que sintetizar.');
+        }
+        const voice = this.resolveTtsVoice(lang);
+        const tempDir = await fs.mkdtemp(join(os.tmpdir(), 'fokkus-tts-'));
+        try {
+            const textFile = join(tempDir, 'speech.txt');
+            await fs.writeFile(textFile, cleanText, 'utf8');
+            const mp3File = join(tempDir, 'speech.mp3');
+            try {
+                await this.runTtsCommand('edge-tts', ['--voice', voice, '--file', textFile, '--write-media', mp3File], JARVIS_TTS_EDGE_TIMEOUT_MS);
+                const mp3 = await fs.readFile(mp3File);
+                return { base64Audio: mp3.toString('base64'), mimeType: 'audio/mpeg' };
+            } catch (error) {
+                console.warn('[fokkus-jarvis] edge-tts no disponible; se usa espeak-ng como respaldo.', error instanceof Error ? error.message : String(error));
+            }
+            const wavFile = join(tempDir, 'speech.wav');
+            const espeakLang = this.resolveEspeakLanguage(lang);
+            await this.runTtsCommand('espeak-ng', ['-v', espeakLang, '-w', wavFile, '-f', textFile], JARVIS_TTS_ESPEAK_TIMEOUT_MS);
+            const wav = await fs.readFile(wavFile);
+            return { base64Audio: wav.toString('base64'), mimeType: 'audio/wav' };
+        } finally {
+            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+        }
+    }
+
+    /** Voz neuronal de edge-tts según el idioma de la configuración de Jarvis. */
+    private resolveTtsVoice(lang?: string): string {
+        const code = (lang || 'es').trim().toLowerCase();
+        if (code.startsWith('es-cl')) {
+            return 'es-CL-CatalinaNeural';
+        }
+        if (code.startsWith('es-mx')) {
+            return 'es-MX-DaliaNeural';
+        }
+        if (code.startsWith('es')) {
+            return 'es-ES-AlvaroNeural';
+        }
+        if (code.startsWith('en')) {
+            return 'en-US-ChristopherNeural';
+        }
+        return 'es-ES-AlvaroNeural';
+    }
+
+    /** Código ISO 639-1 que entiende espeak-ng. */
+    private resolveEspeakLanguage(lang?: string): string {
+        const code = (lang || 'es').trim().toLowerCase();
+        if (code.startsWith('es')) {
+            return 'es';
+        }
+        if (code.startsWith('en')) {
+            return 'en';
+        }
+        return 'es';
+    }
+
+    /** Ejecuta un proceso TTS sin ensuciar el log del agente y con tope de tiempo. */
+    private runTtsCommand(file: string, args: string[], timeoutMs: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const child = spawn(file, args, { windowsHide: true });
+            let stderr = '';
+            let settled = false;
+            const finish = (action: () => void): void => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    action();
+                }
+            };
+            const timer = setTimeout(() => {
+                child.kill('SIGKILL');
+                finish(() => reject(new Error(`El proceso TTS superó ${timeoutMs / 1000} s`)));
+            }, timeoutMs);
+            child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+            child.on('error', error => finish(() => reject(error)));
+            child.on('close', (code: number | null) => finish(() => {
+                if (code !== 0) {
+                    const detail = stderr.trim();
+                    reject(new Error(detail.slice(-500) || `El proceso TTS terminó con código ${code ?? 'desconocido'}`));
+                    return;
+                }
+                resolve();
+            }));
+        });
     }
 
     private async resolveWorkspaceRoot(): Promise<string> {

@@ -95,6 +95,12 @@ export interface DesktopEnvironment {
     desktop: string;
 }
 
+/** Audio sintetizado por el backend (edge-tts con fallback a espeak-ng), listo para reproducir con HTML5 Audio. */
+export interface SynthesizedAudio {
+    base64Audio: string;
+    mimeType: string;
+}
+
 export interface FokkusOrchestratorServer {
     /** Despacha el prompt al enjambre con un modo de ejecución concreto (o `raw` para dispatches internos sin directiva ni tool de aprobación). */
     dispatchToSwarm(
@@ -123,4 +129,10 @@ export interface FokkusOrchestratorServer {
      * con la extensión correcta; `lang` es opcional (por defecto 'es').
      */
     transcribeAudio(base64Audio: string, mimeType: string, lang?: string): Promise<string>;
+    /**
+     * Sintetiza `text` a voz en el backend (edge-tts con fallback a espeak-ng) y devuelve el audio
+     * en base64 listo para reproducir con HTML5 Audio. Evita depender de `window.speechSynthesis`,
+     * que en Electron/Linux suele estar vacío (sin `speech-dispatcher`) y no emite sonido.
+     */
+    synthesizeSpeech(text: string, lang?: string): Promise<SynthesizedAudio>;
 }

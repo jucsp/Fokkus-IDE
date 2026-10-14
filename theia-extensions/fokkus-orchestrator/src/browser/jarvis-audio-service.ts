@@ -26,6 +26,7 @@ import {
     JARVIS_PREFERRED_VOICE_LANGS,
     JARVIS_SILENCE_TIMEOUT_MS,
     JARVIS_STORAGE_KEY,
+    JARVIS_VOICES,
     JarvisAudioService,
     JarvisConfig,
     JarvisState,
@@ -142,6 +143,9 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected readonly onErrorEmitter = new Emitter<string>();
     readonly onError: TheiaEvent<string> = this.onErrorEmitter.event;
 
+    protected readonly onPreviewChangedEmitter = new Emitter<string | undefined>();
+    readonly onPreviewChanged: TheiaEvent<string | undefined> = this.onPreviewChangedEmitter.event;
+
     protected state: JarvisState = 'idle';
     protected config: JarvisConfig = { ...DEFAULT_JARVIS_CONFIG };
     protected muted: boolean = false;
@@ -164,6 +168,12 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected currentAudioElement: HTMLAudioElement | undefined;
     /** Sube en cada `speak`/`stopSpeaking`: descarta la síntesis de backend de una locución anterior. */
     protected speechGeneration: number = 0;
+    /** Elemento HTML5 `Audio` de la vista previa de voz (independiente de la locución normal). */
+    protected previewAudioElement: HTMLAudioElement | undefined;
+    /** Sube en cada `previewVoice`/`stopPreview`: invalida la síntesis de una vista previa anterior. */
+    protected previewGeneration: number = 0;
+    /** Voz de la vista previa en curso (desde que se pide la síntesis hasta que termina el audio). */
+    protected previewVoiceId: string | undefined;
 
     protected voiceDispatchActive: boolean = false;
     protected voiceDispatchPrompt: string | undefined;
@@ -196,6 +206,9 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         this.config = { ...this.config, ...patch };
         if (this.config.voiceLang.trim().length === 0) {
             this.config.voiceLang = DEFAULT_JARVIS_CONFIG.voiceLang;
+        }
+        if (this.config.voiceId !== undefined && this.config.voiceId.trim().length === 0) {
+            this.config.voiceId = DEFAULT_JARVIS_CONFIG.voiceId;
         }
         this.persistConfig();
         const snapshot = { ...this.config };
@@ -299,6 +312,73 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         if (this.isTtsSupported()) {
             window.speechSynthesis.cancel();
         }
+    }
+
+    /**
+     * Reproduce una vista previa de una voz del catálogo. Es independiente de la locución normal
+     * (`speak`): no altera el estado `speaking`/`muted` ni el re-armado de la escucha continua, para
+     * que probar una voz en el panel de configuración no interrumpa un turno en curso.
+     */
+    public async previewVoice(voiceId: string, sampleText?: string): Promise<void> {
+        const voice = JARVIS_VOICES.find(candidate => candidate.id === voiceId);
+        if (!voice) {
+            this.warn(`Voz de vista previa desconocida: ${voiceId}`);
+            return;
+        }
+        const text = (sampleText ?? voice.previewText).trim();
+        if (text.length === 0) {
+            return;
+        }
+        this.stopPreview();
+        const generation = ++this.previewGeneration;
+        const isCurrent = (): boolean => generation === this.previewGeneration;
+        this.previewVoiceId = voice.id;
+        this.onPreviewChangedEmitter.fire(voice.id);
+        try {
+            const result = await this.orchestratorServer.synthesizeSpeech(text, voice.id);
+            if (!isCurrent()) {
+                return;
+            }
+            const audio = new Audio(`data:${result.mimeType};base64,${result.base64Audio}`);
+            this.previewAudioElement = audio;
+            const finish = (): void => {
+                if (isCurrent()) {
+                    this.stopPreview();
+                }
+            };
+            audio.onended = finish;
+            audio.onerror = event => {
+                this.warn('Error reproduciendo la vista previa de voz', event);
+                finish();
+            };
+            audio.play().catch(error => {
+                this.warn('Error al iniciar la vista previa de voz', error);
+                finish();
+            });
+        } catch (error) {
+            this.warn('No se pudo generar la vista previa de voz', error);
+            if (isCurrent()) {
+                this.stopPreview();
+                this.onErrorEmitter.fire(`No se pudo generar la vista previa de ${voice.name}.`);
+            }
+        }
+    }
+
+    public stopPreview(): void {
+        this.previewGeneration++;
+        if (this.previewAudioElement) {
+            this.previewAudioElement.pause();
+            this.previewAudioElement.currentTime = 0;
+            this.previewAudioElement = undefined;
+        }
+        if (this.previewVoiceId !== undefined) {
+            this.previewVoiceId = undefined;
+            this.onPreviewChangedEmitter.fire(undefined);
+        }
+    }
+
+    public getPreviewVoiceId(): string | undefined {
+        return this.previewVoiceId;
     }
 
     public async dispatchVoicePrompt(text: string): Promise<void> {
@@ -916,7 +996,8 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         const generation = this.speechGeneration;
         const isCurrent = (): boolean => generation === this.speechGeneration;
         this.startSpeakingSimulation();
-        this.orchestratorServer.synthesizeSpeech(text, this.config.voiceLang)
+        // El `voiceId` (voz exacta de edge-tts) gana sobre el código de idioma cuando está definido.
+        this.orchestratorServer.synthesizeSpeech(text, this.config.voiceId ?? this.config.voiceLang)
             .then(result => {
                 if (!isCurrent() || this.muted || this.getState() !== 'speaking') {
                     return;

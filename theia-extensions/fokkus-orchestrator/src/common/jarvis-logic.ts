@@ -7,7 +7,15 @@
  * SPDX-License-Identifier: MIT
  ********************************************************************************/
 
-import { DEFAULT_JARVIS_CONFIG, JarvisConfig, JarvisState } from './jarvis-protocol';
+import {
+    DEFAULT_JARVIS_CONFIG,
+    JARVIS_DEFAULT_VOICE_ID,
+    JARVIS_VOICES,
+    JarvisConfig,
+    JarvisState,
+    JarvisVoiceInfo,
+    JarvisVoiceRegion
+} from './jarvis-protocol';
 
 /**
  * Lógica pura de Jarvis (Issue #27, Fase 3): sin DOM ni Theia, para poder probarla en Node.
@@ -85,6 +93,9 @@ export function parseStoredJarvisConfig(raw: string | null | undefined): JarvisC
     }
     if (typeof candidate.voiceLang === 'string' && candidate.voiceLang.trim().length > 0) {
         config.voiceLang = candidate.voiceLang.trim();
+    }
+    if (typeof candidate.voiceId === 'string' && candidate.voiceId.trim().length > 0) {
+        config.voiceId = candidate.voiceId.trim();
     }
     if (typeof candidate.gamingMode === 'boolean') {
         config.gamingMode = candidate.gamingMode;
@@ -258,4 +269,37 @@ export function summarizeTranscript(text: string, maxLength: number = 140): stri
 /** Errores de la Web Speech API que indican permiso denegado: re-armar provocaría un bucle. */
 export function isFatalRecognitionError(code: string | undefined): boolean {
     return code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture';
+}
+
+// -------------------------------------------------------------------------------------------------
+// Selector de voces
+// -------------------------------------------------------------------------------------------------
+
+/** Pestaña del selector de voces: una región del catálogo o todas. */
+export type JarvisVoiceFilter = JarvisVoiceRegion | 'all';
+
+export const JARVIS_VOICE_FILTERS: readonly { id: JarvisVoiceFilter; label: string }[] = [
+    { id: 'latam', label: 'Latinoamérica' },
+    { id: 'spain', label: 'España' },
+    { id: 'english', label: 'Inglés' },
+    { id: 'all', label: 'Todas' }
+];
+
+export function filterJarvisVoices(filter: JarvisVoiceFilter, voices: readonly JarvisVoiceInfo[] = JARVIS_VOICES): JarvisVoiceInfo[] {
+    return voices.filter(voice => filter === 'all' || voice.region === filter);
+}
+
+/**
+ * Voz del catálogo que corresponde a la configuración: por `voiceId`; si falta o no está en el catálogo,
+ * la primera voz del idioma `voiceLang`; y si tampoco, la voz por defecto.
+ */
+export function resolveJarvisVoice(config: Pick<JarvisConfig, 'voiceId' | 'voiceLang'>, voices: readonly JarvisVoiceInfo[] = JARVIS_VOICES): JarvisVoiceInfo {
+    const byId = voices.find(voice => voice.id === config.voiceId);
+    if (byId) {
+        return byId;
+    }
+    const lang = config.voiceLang.toLowerCase();
+    return voices.find(voice => voice.lang.toLowerCase() === lang)
+        ?? voices.find(voice => voice.id === JARVIS_DEFAULT_VOICE_ID)
+        ?? voices[0];
 }

@@ -21,6 +21,7 @@ import {
 } from '../common/jarvis-logic';
 import { JarvisConfig, JarvisState } from '../common/jarvis-protocol';
 import type { JarvisController } from './jarvis-controller';
+import { JarvisVoiceDialog } from './jarvis-voice-dialog';
 
 /** Lado del canvas en px CSS. */
 export const JARVIS_BUBBLE_SIZE = 128;
@@ -31,7 +32,7 @@ const TRANSCRIPT_TTL_MS = 7000;
 const BLOB_SEGMENTS = 96;
 /** Tamaño del menú contextual (debe coincidir con `.fokkus-jarvis-menu` en jarvis.css). */
 const MENU_WIDTH = 236;
-const MENU_HEIGHT = 196;
+const MENU_HEIGHT = 226;
 
 type TranscriptKind = 'user' | 'user-interim' | 'assistant' | 'error';
 
@@ -84,6 +85,7 @@ export function JarvisBubble({ controller, overlay }: JarvisBubbleProps): React.
     const [config, setConfig] = React.useState<JarvisConfig>(() => audio.getConfig());
     const [transcript, setTranscript] = React.useState<TranscriptLine | undefined>(undefined);
     const [menu, setMenu] = React.useState<MenuPosition | undefined>(undefined);
+    const [voiceDialogOpen, setVoiceDialogOpen] = React.useState(false);
     const [position, setPosition] = React.useState<JarvisPoint>(() => controller.getInAppPosition());
     const [dragging, setDragging] = React.useState(false);
 
@@ -302,6 +304,9 @@ export function JarvisBubble({ controller, overlay }: JarvisBubbleProps): React.
                             Flotar sobre otras ventanas
                         </button>
                     )}
+                    <button type='button' role='menuitem' className='fokkus-jarvis-menu-item' onClick={() => runMenuAction(() => setVoiceDialogOpen(true))}>
+                        Cambiar voz de Jarvis...
+                    </button>
                     <button type='button' role='menuitem' className='fokkus-jarvis-menu-item'
                         onClick={() => runMenuAction(() => { controller.openChat().catch(error => console.warn('[fokkus-jarvis] No se pudo abrir el chat', error)); })}>
                         Abrir chat de Fokkus Team
@@ -312,6 +317,7 @@ export function JarvisBubble({ controller, overlay }: JarvisBubbleProps): React.
                     </button>
                 </div>
             )}
+            {voiceDialogOpen && <JarvisVoiceDialog audio={audio} onClose={() => setVoiceDialogOpen(false)} />}
         </div>
     );
 }

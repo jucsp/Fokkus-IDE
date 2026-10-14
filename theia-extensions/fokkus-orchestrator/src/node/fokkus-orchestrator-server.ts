@@ -1110,22 +1110,37 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         throw lastError;
     }
 
-    /** Voz neuronal de edge-tts según el idioma de la configuración de Jarvis. */
-    private resolveTtsVoice(lang?: string): string {
-        const code = (lang || 'es').trim().toLowerCase();
-        if (code.startsWith('es-cl')) {
-            return 'es-CL-LorenzoNeural';
+    /**
+     * Voz neuronal de edge-tts según el idioma de la configuración de Jarvis. Si el parámetro ya es
+     * un id de voz (contiene 'Neural'), se devuelve tal cual: así la vista previa puede elegir la voz
+     * exacta. Si no, se resuelve por código de idioma, con Latinoamérica (es-CL) como valor por defecto.
+     */
+    private resolveTtsVoice(langOrVoice?: string): string {
+        const raw = (langOrVoice || 'es').trim();
+        if (raw.toLowerCase().includes('neural')) {
+            return raw;
+        }
+        const code = raw.toLowerCase();
+        if (code.startsWith('es-es')) {
+            return 'es-ES-AlvaroNeural';
         }
         if (code.startsWith('es-mx')) {
             return 'es-MX-JorgeNeural';
         }
-        if (code.startsWith('es')) {
-            return 'es-ES-AlvaroNeural';
+        if (code.startsWith('es-ar')) {
+            return 'es-AR-TomasNeural';
+        }
+        if (code.startsWith('es-co')) {
+            return 'es-CO-GonzaloNeural';
+        }
+        if (code.startsWith('es-pe')) {
+            return 'es-PE-AlexNeural';
         }
         if (code.startsWith('en')) {
             return 'en-US-ChristopherNeural';
         }
-        return 'es-ES-AlvaroNeural';
+        // es-cl, es-419, es-la, es genérico y cualquier otro código → voz latina por defecto.
+        return 'es-CL-LorenzoNeural';
     }
 
     /** Código ISO 639-1 que entiende espeak-ng. */

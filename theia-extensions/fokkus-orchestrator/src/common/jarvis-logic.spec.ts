@@ -10,15 +10,17 @@
 import { expect } from 'chai';
 import {
     computeRmsLevel,
+    filterJarvisVoices,
     isFatalRecognitionError,
     JARVIS_RMS_GAIN,
     JARVIS_SPEECH_RMS_THRESHOLD,
     parseStoredJarvisConfig,
+    resolveJarvisVoice,
     shouldAutoListen,
     shouldCloseMicrophone,
     shouldReleaseMicrophone
 } from './jarvis-logic';
-import { DEFAULT_JARVIS_CONFIG } from './jarvis-protocol';
+import { DEFAULT_JARVIS_CONFIG, JARVIS_DEFAULT_VOICE_ID, JARVIS_DEFAULT_VOICE_LANG, JARVIS_VOICES } from './jarvis-protocol';
 
 /** Onda cuadrada de bytes centrada en 128 con amplitud `amplitude` (RMS exacto = amplitude / 128). */
 function squareWave(amplitude: number, length: number = 256): Uint8Array {
@@ -65,6 +67,21 @@ describe('jarvis-logic', () => {
             expect(config.gamingMode).to.equal(!DEFAULT_JARVIS_CONFIG.gamingMode);
             expect(config.voiceLang).to.equal(DEFAULT_JARVIS_CONFIG.voiceLang);
         });
+
+        it('la configuración por defecto usa Latinoamérica (es-CL) y la voz Lorenzo', () => {
+            expect(JARVIS_DEFAULT_VOICE_LANG).to.equal('es-CL');
+            expect(JARVIS_DEFAULT_VOICE_ID).to.equal('es-CL-LorenzoNeural');
+            expect(DEFAULT_JARVIS_CONFIG.voiceLang).to.equal('es-CL');
+            expect(DEFAULT_JARVIS_CONFIG.voiceId).to.equal('es-CL-LorenzoNeural');
+        });
+
+        it('parsea y sanitiza voiceId', () => {
+            const config = parseStoredJarvisConfig(JSON.stringify({ voiceId: 'es-MX-JorgeNeural' }));
+            expect(config.voiceId).to.equal('es-MX-JorgeNeural');
+            // Cadena vacía o tipo incorrecto caen al valor por defecto.
+            expect(parseStoredJarvisConfig(JSON.stringify({ voiceId: '   ' })).voiceId).to.equal(DEFAULT_JARVIS_CONFIG.voiceId);
+            expect(parseStoredJarvisConfig(JSON.stringify({ voiceId: 42 })).voiceId).to.equal(DEFAULT_JARVIS_CONFIG.voiceId);
+        });
     });
 
     describe('auto-escucha', () => {
@@ -101,6 +118,31 @@ describe('jarvis-logic', () => {
         it("'network' no es fatal: activa el STT local en vez de bloquear el micrófono", () => {
             expect(isFatalRecognitionError('network')).to.equal(false);
             expect(isFatalRecognitionError('not-allowed')).to.equal(true);
+        });
+    });
+
+    describe('selector de voces', () => {
+        it('filtra por región y "Todas" devuelve el catálogo completo', () => {
+            expect(filterJarvisVoices('all')).to.have.length(JARVIS_VOICES.length);
+            const regions = ['latam', 'spain', 'english'] as const;
+            const total = regions.reduce((sum, region) => {
+                const voices = filterJarvisVoices(region);
+                expect(voices.length).to.be.greaterThan(0);
+                expect(voices.every(voice => voice.region === region)).to.equal(true);
+                return sum + voices.length;
+            }, 0);
+            expect(total).to.equal(JARVIS_VOICES.length);
+        });
+
+        it('los ids del catálogo son únicos', () => {
+            expect(new Set(JARVIS_VOICES.map(voice => voice.id)).size).to.equal(JARVIS_VOICES.length);
+        });
+
+        it('resuelve la voz por id, luego por idioma y si no la voz por defecto', () => {
+            expect(resolveJarvisVoice({ voiceId: 'en-US-JennyNeural', voiceLang: 'es-CL' }).id).to.equal('en-US-JennyNeural');
+            expect(resolveJarvisVoice({ voiceId: undefined, voiceLang: 'es-ES' }).id).to.equal('es-ES-AlvaroNeural');
+            expect(resolveJarvisVoice({ voiceId: 'xx-Unknown', voiceLang: 'fr-FR' }).id).to.equal(JARVIS_DEFAULT_VOICE_ID);
+            expect(resolveJarvisVoice(DEFAULT_JARVIS_CONFIG).region).to.equal('latam');
         });
     });
 });

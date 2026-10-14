@@ -18,12 +18,13 @@ import {
     TRIAGE_TITLE_MAX_LENGTH,
     TriageAuthor,
     TriageCounts,
+    TriageFeedbackRule,
     TriageItem,
     TriageSource
 } from '../../common/triage-protocol';
 import { classify } from './triage-classifier';
 import { writeJsonAtomic } from './triage-config';
-import { TriageFeedbackStore } from './triage-feedback';
+import { matchesFeedbackRule, TriageFeedbackStore } from './triage-feedback';
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 2000;
@@ -261,6 +262,41 @@ export class TriageStore {
             await this.feedback.incrementHits(feedbackRule.id).catch(() => undefined);
         }
         return result;
+    }
+
+    /**
+     * Aplica retroactivamente las reglas aprendidas a los ítems pendientes ya existentes (#28).
+     * Descarta los que coincidan y devuelve la lista de ítems descartados (sin persistir si no hubo cambios).
+     */
+    async applyFeedbackRules(rules: TriageFeedbackRule[]): Promise<TriageItem[]> {
+        const outcome = await this.mutate(data => {
+            const discarded: TriageItem[] = [];
+            const hitRuleIds: string[] = [];
+            const now = new Date().toISOString();
+            for (const item of data.items) {
+                if (item.status !== 'pending') {
+                    continue;
+                }
+                const rule = rules.find(r => matchesFeedbackRule(r, { author: item.author, originalSubject: item.originalSubject }));
+                if (!rule) {
+                    continue;
+                }
+                item.status = 'discarded';
+                item.autoDiscarded = true;
+                item.autoDiscardReason = rule.reason;
+                item.discardReason = `Auto-descartado por regla aprendida: ${rule.reason}`;
+                item.updatedAt = now;
+                discarded.push({ ...item });
+                hitRuleIds.push(rule.id);
+            }
+            return { discarded, hitRuleIds };
+        }, result => result.discarded.length > 0);
+
+        // Un hit por ítem descartado, igual que en la ingesta (un fallo aquí no deshace el descarte).
+        for (const id of outcome.hitRuleIds) {
+            await this.feedback.incrementHits(id).catch(() => undefined);
+        }
+        return outcome.discarded;
     }
 
     getSlackCursor(channelId: string): Promise<string | undefined> {

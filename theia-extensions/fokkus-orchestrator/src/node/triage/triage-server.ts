@@ -235,6 +235,8 @@ export class TriageServerImpl implements TriageServer {
             }).catch(() => undefined);
         }
         await this.emitUpdated(item);
+        // La regla recién aprendida se aplica también a los pendientes ya existentes.
+        await this.applyFeedbackRules().catch(() => undefined);
         return item;
     }
 
@@ -308,6 +310,8 @@ export class TriageServerImpl implements TriageServer {
                 this.broadcast({ kind: 'items-detected', items: created, counts });
             }
         }
+        // Aplica retroactivamente las reglas aprendidas a los pendientes existentes (sondeo manual y automático).
+        await this.applyFeedbackRules().catch(() => undefined);
         return { startedAt, finishedAt: new Date().toISOString(), sources };
     }
 
@@ -502,6 +506,19 @@ export class TriageServerImpl implements TriageServer {
             throw new Error('Identificador de regla inválido');
         }
         await this.feedback.delete(ruleId);
+    }
+
+    /** Aplica las reglas aprendidas a los pendientes existentes y difunde los descartes (#28). */
+    async applyFeedbackRules(): Promise<{ discardedCount: number }> {
+        const rules = await this.feedback.list();
+        if (rules.length === 0) {
+            return { discardedCount: 0 };
+        }
+        const discardedItems = await this.store.applyFeedbackRules(rules);
+        for (const item of discardedItems) {
+            await this.emitUpdated(item);
+        }
+        return { discardedCount: discardedItems.length };
     }
 
     // --- Respuesta al cliente (#29) --------------------------------------------------------

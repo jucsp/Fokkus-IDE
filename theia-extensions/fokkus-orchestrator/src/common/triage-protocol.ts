@@ -557,6 +557,8 @@ export interface TriageServer extends RpcServer<TriageClient> {
     getFeedbackRules(): Promise<TriageFeedbackRule[]>;
     /** Elimina una regla aprendida (los ítems ya auto-descartados no se restauran). */
     deleteFeedbackRule(ruleId: string): Promise<void>;
+    /** Aplica las reglas aprendidas a los ítems pendientes existentes y descarta los que coincidan (#28). */
+    applyFeedbackRules(): Promise<{ discardedCount: number }>;
 
     /** Borrador de respuesta para un ítem aprobado con ticket (#29). */
     getReplyDraft(itemId: string): Promise<TriageReplyDraft>;

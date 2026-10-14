@@ -566,6 +566,8 @@ function TriageInboxApp({ server, client, windowService, confirm, notify, onCoun
         });
         if (updated.status === 'discarded' && updated.discardReason) {
             setRulesVersion(version => version + 1);
+            // La regla aprendida pudo auto-descartar otros pendientes: se recarga la lista.
+            loadItems(queryRef.current);
         }
         // Los contadores llegan por el evento item-updated; si el evento no llega (backend sin cliente), se piden.
         withTriageTimeout(server.getStatus()).then(status => applyCounts(status.counts)).catch(() => undefined);
@@ -717,7 +719,12 @@ function TriageInboxApp({ server, client, windowService, confirm, notify, onCoun
                 </button>
                 {rulesOpen && (
                     <div className='fokkus-backlog-section-body'>
-                        <TriageFeedbackRules server={server} refreshKey={rulesVersion} confirm={confirm} />
+                        <TriageFeedbackRules
+                            server={server}
+                            refreshKey={rulesVersion}
+                            confirm={confirm}
+                            onRulesApplied={() => { loadItems(queryRef.current); loadStatus(); }}
+                        />
                     </div>
                 )}
             </section>

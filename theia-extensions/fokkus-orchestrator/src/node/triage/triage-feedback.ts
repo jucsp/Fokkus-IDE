@@ -64,38 +64,98 @@ export function extractKeywords(...parts: string[]): string[] {
     return keywords;
 }
 
+/**
+ * Marcadores (ya normalizados) que indican que el motivo describe una regla SOBRE EL REMITENTE
+ * y no sobre el contenido del asunto. En ese caso no se infiere `subjectPattern` del correo anterior.
+ */
+const SENDER_RULE_MARKERS = [
+    'vienen de', 'viene de', 'vengan de', 'venga de', 'provienen de', 'proviene de',
+    'llegan de', 'llega de', 'correo de', 'correos de', 'mail de', 'mails de',
+    'email de', 'emails de', 'notificaciones de', 'mensajes de', 'mensaje de',
+    'remitente', 'sender', 'dominio', 'domain'
+];
+
+/** ¿El motivo describe una regla de remitente (menciona un email o un remitente/dominio)? */
+export function isSenderBasedRule(reason: string): boolean {
+    const normalized = normalizeText(reason ?? '');
+    if (normalized.includes('@')) {
+        return true;
+    }
+    return SENDER_RULE_MARKERS.some(marker => normalized.includes(marker));
+}
+
 /** Campos inferidos de una regla (sin id/createdAt/hits). */
 export function inferFeedbackRule(input: FeedbackDiscardInput): Pick<TriageFeedbackRule, 'reason' | 'senderEmail' | 'senderDomain' | 'subjectPattern'> {
     const email = (input.author.email ?? '').trim().toLowerCase();
     const domain = email.split('@')[1] ?? '';
-    const keywords = extractKeywords(input.originalSubject, input.reason);
-    const subjectPattern = keywords.join(' ');
+    const reason = input.reason.trim();
+    let subjectPattern: string | undefined;
+    if (!isSenderBasedRule(reason)) {
+        // Palabras clave del MOTIVO del usuario; solo del asunto original si el motivo no aporta ninguna.
+        let keywords = extractKeywords(reason);
+        if (keywords.length === 0) {
+            keywords = extractKeywords(input.originalSubject);
+        }
+        subjectPattern = keywords.join(' ');
+    }
     return {
-        reason: input.reason.trim(),
+        reason,
         ...(email ? { senderEmail: email } : {}),
         ...(domain ? { senderDomain: domain } : {}),
         ...(subjectPattern ? { subjectPattern: subjectPattern.slice(0, TRIAGE_FEEDBACK_RULE_SUBJECT_MAX) } : {})
     };
 }
 
-/** ¿El candidato cumple la regla? Remitente (email/dominio) y patrón de asunto se combinan con AND. */
+/**
+ * ¿El `subjectPattern` no aporta señal discriminante (fue inferido espuriamente de un correo anterior)?
+ * Ocurre cuando el motivo es puramente de remitente o cuando ninguna de sus palabras aparece en el motivo.
+ */
+function isSpuriousSubjectPattern(rule: TriageFeedbackRule): boolean {
+    if (!rule.subjectPattern) {
+        return false;
+    }
+    if (isSenderBasedRule(rule.reason)) {
+        return true;
+    }
+    const tokens = rule.subjectPattern.split(' ').filter(Boolean);
+    if (tokens.length === 0) {
+        return false;
+    }
+    const reason = normalizeText(rule.reason);
+    return tokens.every(token => !reason.includes(token));
+}
+
+/** Quita el `subjectPattern` espurio de una regla de remitente (la repara en memoria y, al reescribir, en disco). */
+function sanitizeRule(rule: TriageFeedbackRule): TriageFeedbackRule {
+    if (rule.subjectPattern && isSenderBasedRule(rule.reason)) {
+        const copy = { ...rule };
+        delete copy.subjectPattern;
+        return copy;
+    }
+    return rule;
+}
+
+/** ¿El candidato cumple la regla? El remitente manda; el patrón de asunto solo se exige si aporta señal real. */
 export function matchesFeedbackRule(rule: TriageFeedbackRule, input: FeedbackMatchInput): boolean {
     const email = (input.author.email ?? '').trim().toLowerCase();
     const domain = email.split('@')[1] ?? '';
-    if (rule.senderEmail && email !== rule.senderEmail) {
+    const hasSender = !!rule.senderEmail || !!rule.senderDomain;
+    const senderMatches = (!rule.senderEmail || email === rule.senderEmail)
+        && (!rule.senderDomain || domain === rule.senderDomain);
+
+    if (hasSender && !senderMatches) {
         return false;
     }
-    if (rule.senderDomain && domain !== rule.senderDomain) {
-        return false;
+    if (isSpuriousSubjectPattern(rule)) {
+        // El patrón no discrimina: la coincidencia de remitente (si existe) es suficiente.
+        return hasSender && senderMatches;
     }
-    if (rule.subjectPattern) {
-        const subject = normalizeText(input.originalSubject ?? '');
-        const tokens = rule.subjectPattern.split(' ').filter(Boolean);
-        if (tokens.length > 0 && !tokens.every(token => subject.includes(token))) {
-            return false;
-        }
+    const tokens = (rule.subjectPattern ?? '').split(' ').filter(Boolean);
+    if (tokens.length === 0) {
+        return hasSender && senderMatches;
     }
-    return true;
+    const subject = normalizeText(input.originalSubject ?? '');
+    return tokens.every(token => subject.includes(token));
 }
 
 type RuleKey = Pick<TriageFeedbackRule, 'senderEmail' | 'senderDomain' | 'subjectPattern'>;
@@ -162,7 +222,7 @@ export class TriageFeedbackStore {
         try {
             const parsed: unknown = JSON.parse(raw);
             const root = parsed && typeof parsed === 'object' ? parsed as Partial<FeedbackFile> : {};
-            this.data = { version: 1, rules: Array.isArray(root.rules) ? root.rules.filter(isRule) : [] };
+            this.data = { version: 1, rules: Array.isArray(root.rules) ? root.rules.filter(isRule).map(sanitizeRule) : [] };
         } catch {
             const backup = `${target}.corrupt-${Date.now()}`;
             this.logger.error('triage-feedback.json está dañado: se aparta y las reglas empiezan vacías');
@@ -191,7 +251,7 @@ export class TriageFeedbackStore {
 
     list(): Promise<TriageFeedbackRule[]> {
         return this.read(data => data.rules
-            .map(rule => ({ ...rule }))
+            .map(rule => sanitizeRule({ ...rule }))
             .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)));
     }
 

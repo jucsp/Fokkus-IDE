@@ -16,6 +16,8 @@ export interface TriageFeedbackRulesProps {
     /** Cambia cuando se descarta algo con motivo: el backend puede haber aprendido una regla nueva. */
     refreshKey: number;
     confirm(title: string, message: string): Promise<boolean>;
+    /** Tras aplicar las reglas a los pendientes: el padre recarga la lista de solicitudes. */
+    onRulesApplied?: () => void;
 }
 
 function formatDate(iso: string): string {
@@ -24,9 +26,11 @@ function formatDate(iso: string): string {
 }
 
 /** Reglas de auto-descarte aprendidas de los descartes con motivo (#28). */
-export function TriageFeedbackRules({ server, refreshKey, confirm }: TriageFeedbackRulesProps): React.ReactElement {
+export function TriageFeedbackRules({ server, refreshKey, confirm, onRulesApplied }: TriageFeedbackRulesProps): React.ReactElement {
     const [rules, setRules] = React.useState<TriageFeedbackRule[]>();
     const [loading, setLoading] = React.useState(false);
+    const [applying, setApplying] = React.useState(false);
+    const [applied, setApplied] = React.useState<number>();
     const [error, setError] = React.useState<string>();
     const [deleting, setDeleting] = React.useState<string>();
 
@@ -45,6 +49,24 @@ export function TriageFeedbackRules({ server, refreshKey, confirm }: TriageFeedb
     React.useEffect(() => {
         load();
     }, [load, refreshKey]);
+
+    /** Aplica las reglas a los pendientes existentes y recarga reglas (hits) y bandeja. */
+    const applyAndReload = async (): Promise<void> => {
+        setApplying(true);
+        setApplied(undefined);
+        setError(undefined);
+        try {
+            const { discardedCount } = await withTriageTimeout(server.applyFeedbackRules());
+            setApplied(discardedCount);
+        } catch (err) {
+            setError(triageErrorMessage(err));
+            return;
+        } finally {
+            setApplying(false);
+        }
+        await load();
+        onRulesApplied?.();
+    };
 
     const remove = async (rule: TriageFeedbackRule): Promise<void> => {
         const ok = await confirm(
@@ -72,10 +94,22 @@ export function TriageFeedbackRules({ server, refreshKey, confirm }: TriageFeedb
                 <span className='fokkus-triage-hint'>
                     Se aprenden al descartar con motivo. Las solicitudes nuevas que coincidan llegan como descartadas.
                 </span>
-                <button type='button' className='fokkus-backlog-icon-button' onClick={load} disabled={loading} title='Recargar reglas'>
-                    <i className={`fa fa-refresh${loading ? ' fa-spin' : ''}`} />
+                <button
+                    type='button'
+                    className='fokkus-backlog-icon-button'
+                    onClick={applyAndReload}
+                    disabled={loading || applying}
+                    title='Aplicar las reglas a las pendientes y recargar'
+                >
+                    <i className={`fa fa-refresh${loading || applying ? ' fa-spin' : ''}`} />
                 </button>
             </div>
+            {applied !== undefined && (
+                <div className='fokkus-backlog-status' role='status'>
+                    {applied === 0 ? 'Ninguna solicitud pendiente coincide con las reglas.'
+                        : `${applied} solicitud${applied === 1 ? '' : 'es'} pendiente${applied === 1 ? '' : 's'} auto-descartada${applied === 1 ? '' : 's'}.`}
+                </div>
+            )}
             {error && <div className='fokkus-backlog-error' role='alert'>{error}</div>}
             {!rules && loading && <div className='fokkus-backlog-status'>Cargando reglas…</div>}
             {rules && rules.length === 0 && <div className='fokkus-backlog-status'>Aún no hay reglas aprendidas.</div>}

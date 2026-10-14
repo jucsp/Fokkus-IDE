@@ -43,6 +43,8 @@ export const JARVIS_DEFAULT_VOICE_LANG = 'es-ES';
 export const JARVIS_PREFERRED_VOICE_LANGS: readonly string[] = ['es-CL', 'es-419', 'es-MX', 'es-AR', 'es-ES', 'es-US'];
 /** Milisegundos de silencio para dar por terminado un turno de habla. */
 export const JARVIS_SILENCE_TIMEOUT_MS = 1800;
+/** Tope de grabación continua sin detectar voz (evita dejar el micrófono encendido indefinidamente). */
+export const JARVIS_MAX_LOCAL_RECORDING_MS = 30_000;
 /** Tope de espera para el resultado del Agente Líder antes de volver a `idle`. */
 export const JARVIS_DISPATCH_TIMEOUT_MS = 5 * 60 * 1000;
 

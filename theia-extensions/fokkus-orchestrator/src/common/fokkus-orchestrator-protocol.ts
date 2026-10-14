@@ -116,4 +116,11 @@ export interface FokkusOrchestratorServer {
     readonly onDidDispatchSwarm: Event<SwarmDispatchResult>;
     readonly onAgentLog: Event<string>;
     getDesktopEnvironment(): Promise<DesktopEnvironment>;
+    /**
+     * Transcribe un audio (base64) a texto usando el motor STT local del backend
+     * (faster-whisper). Devuelve el texto transcripto o una cadena vacía si no se
+     * detectó voz. `mimeType` identifica el contenedor para guardar el temporal
+     * con la extensión correcta; `lang` es opcional (por defecto 'es').
+     */
+    transcribeAudio(base64Audio: string, mimeType: string, lang?: string): Promise<string>;
 }

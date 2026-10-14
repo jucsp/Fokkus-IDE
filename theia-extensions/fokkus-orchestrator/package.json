@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "fokkus-orchestrator-ext",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Fokkus IDE Orchestrator - side panel to recruit AI agents",
   "keywords": [
     "theia-extension"
@@ -39,6 +39,7 @@
     "lint": "eslint --ext js,jsx,ts,tsx src",
     "lint:fix": "eslint --ext js,jsx,ts,tsx src --fix",
     "watch": "tsc -w",
+    "test": "mocha --reporter dot \"lib/**/*.spec.js\"",
     "update:theia": "ts-node ../../scripts/update-theia-version.ts",
     "update:next": "ts-node ../../scripts/update-theia-version.ts next"
   },

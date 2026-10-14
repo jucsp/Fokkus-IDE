@@ -8,12 +8,21 @@
  ********************************************************************************/
 
 import { Emitter, Event as TheiaEvent } from '@theia/core/lib/common/event';
+import { environment } from '@theia/core/shared/@theia/application-package/lib/environment';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { SwarmDispatchResult } from '../common/fokkus-orchestrator-protocol';
-import { computeRmsLevel, isFatalRecognitionError, JARVIS_MAX_CONSECUTIVE_RECOGNITION_ERRORS, parseStoredJarvisConfig } from '../common/jarvis-logic';
+import { FokkusOrchestratorServer, SwarmDispatchResult } from '../common/fokkus-orchestrator-protocol';
+import {
+    computeRmsLevel,
+    isFatalRecognitionError,
+    JARVIS_MAX_CONSECUTIVE_RECOGNITION_ERRORS,
+    JARVIS_RMS_GAIN,
+    JARVIS_SPEECH_RMS_THRESHOLD,
+    parseStoredJarvisConfig
+} from '../common/jarvis-logic';
 import {
     DEFAULT_JARVIS_CONFIG,
     JARVIS_DISPATCH_TIMEOUT_MS,
+    JARVIS_MAX_LOCAL_RECORDING_MS,
     JARVIS_PREFERRED_VOICE_LANGS,
     JARVIS_SILENCE_TIMEOUT_MS,
     JARVIS_STORAGE_KEY,
@@ -24,6 +33,15 @@ import {
 } from '../common/jarvis-protocol';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusSwarmDispatchOutcome, FokkusSwarmEvents } from './fokkus-swarm-events';
+
+/** Una grabación del STT local; cada `MediaRecorder` lleva su propio estado. */
+interface LocalRecordingSession {
+    readonly recorder: MediaRecorder;
+    readonly chunks: Blob[];
+    readonly mimeType: string;
+    speechDetected: boolean;
+    cancelled: boolean;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Tipos mínimos de la Web Speech API (STT). `SpeechRecognition` no está en lib.dom.d.ts, así que
@@ -78,7 +96,9 @@ interface SpeechRecognizerConstructor {
  * Servicio de audio de Jarvis (Issue #27, Fase 2).
  *
  * - STT: `webkitSpeechRecognition`/`SpeechRecognition` nativo de Chromium/Electron, con detección
- *   de silencio para cerrar el turno de habla.
+ *   de silencio para cerrar el turno de habla. En Electron (o cuando el reconocimiento en la nube
+ *   falla con 'network') se usa un pipeline LOCAL: MediaRecorder + `transcribeAudio` del backend
+ *   (faster-whisper), que no depende de los servidores de Google.
  * - Analizador: `getUserMedia` + `AudioContext` + `AnalyserNode` para emitir el RMS (0..1).
  * - TTS: `speechSynthesis` eligiendo la mejor voz en español disponible.
  * - Despacho: entrega el turno al chat (`FokkusChatDispatcher`), que llama a `dispatchToSwarm`, y
@@ -93,6 +113,9 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
 
     @inject(FokkusChatDispatcher)
     protected readonly chatDispatcher: FokkusChatDispatcher;
+
+    @inject(FokkusOrchestratorServer)
+    protected readonly orchestratorServer: FokkusOrchestratorServer;
 
     protected readonly onStateChangedEmitter = new Emitter<JarvisState>();
     readonly onStateChanged: TheiaEvent<JarvisState> = this.onStateChangedEmitter.event;
@@ -136,6 +159,15 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected voiceDispatchSubscription: { dispose(): void } | undefined;
     protected voiceDispatchTimeoutId: number | undefined;
 
+    // STT local (fallback en Electron / error 'network'): MediaRecorder + backend faster-whisper.
+    protected useLocalStt: boolean = false;
+    protected localRecording: LocalRecordingSession | undefined;
+    /** Último RMS crudo (sin ganancia) del micrófono. */
+    protected currentAudioLevel: number = 0;
+    protected localSilenceTimerId: number | undefined;
+    protected localMaxRecordingTimerId: number | undefined;
+    protected audioMeterPromise: Promise<void> | undefined;
+
     @postConstruct()
     protected init(): void {
         this.config = this.loadConfig();
@@ -173,16 +205,15 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     }
 
     public isSupported(): boolean {
-        return this.isSpeechRecognitionSupported() && this.isTtsSupported();
+        return (this.isSpeechRecognitionSupported() || this.isMediaRecorderSupported()) && this.isTtsSupported();
     }
 
     public async startListening(): Promise<void> {
-        if (this.muted || this.microphoneBlocked || this.recognizer) {
+        if (this.muted || this.microphoneBlocked || this.recognizer || this.localRecording) {
             return;
         }
-        if (!this.isSpeechRecognitionSupported()) {
-            this.warn('El reconocimiento de voz no está soportado en este entorno');
-            this.setState('idle');
+        if (this.shouldUseLocalStt()) {
+            await this.startLocalListening();
             return;
         }
         this.startRecognizer();
@@ -193,6 +224,7 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     }
 
     public stopListening(): void {
+        this.stopLocalRecording();
         this.stopRecognizer();
         if (this.getState() === 'listening') {
             this.setState('idle');
@@ -273,6 +305,18 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         return windowWithSpeech.SpeechRecognition !== undefined || windowWithSpeech.webkitSpeechRecognition !== undefined;
     }
 
+    protected isMediaRecorderSupported(): boolean {
+        return typeof window !== 'undefined' && 'MediaRecorder' in window;
+    }
+
+    /**
+     * ¿Usar el STT local (MediaRecorder + backend) en vez de WebSpeech? En Electron siempre: el
+     * WebSpeech de Chromium necesita una clave de Google y falla con 'network' en cada intento.
+     */
+    protected shouldUseLocalStt(): boolean {
+        return this.useLocalStt || environment.electron.is() || !this.isSpeechRecognitionSupported();
+    }
+
     protected createRecognizer(): SpeechRecognizer | undefined {
         const windowWithSpeech = this.speechWindow();
         const ctor = windowWithSpeech.SpeechRecognition ?? windowWithSpeech.webkitSpeechRecognition;
@@ -313,13 +357,22 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected stopRecognizer(): void {
         this.cancelSilenceTimer();
         this.stopAudioLevelMeter();
+        this.stopRecognizerOnly();
+    }
+
+    /** Detiene solo el reconocedor WebSpeech, conservando el micrófono/analizador (para el fallback local). */
+    protected stopRecognizerOnly(): void {
         const recognizer = this.recognizer;
         this.recognizer = undefined;
         if (recognizer) {
             try {
-                recognizer.stop();
-            } catch (error) {
-                this.warn('No se pudo detener el reconocimiento de voz', error);
+                recognizer.abort();
+            } catch {
+                try {
+                    recognizer.stop();
+                } catch (error) {
+                    this.warn('No se pudo detener el reconocimiento de voz', error);
+                }
             }
         }
     }
@@ -391,8 +444,16 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         if (!code || code === 'no-speech' || code === 'aborted') {
             return;
         }
-        // Errores como 'network' (servicio de reconocimiento caído o sin clave en Electron) se
-        // repetirían en bucle con la auto-escucha: tras varios seguidos se deja de re-armar.
+        if (code === 'network') {
+            // En Electron/Chromium sin clave de Google, 'network' llega al instante (403). En vez de
+            // bloquear el micrófono, se activa el fallback local: MediaRecorder + backend faster-whisper.
+            this.useLocalStt = true;
+            this.onErrorEmitter.fire('Reconocimiento en la nube no disponible: cambio a transcripción local.');
+            this.switchToLocalStt().catch(error => this.warn('No se pudo activar la transcripción local', error));
+            return;
+        }
+        // Otros errores (servicio caído, etc.) se repetirían en bucle con la auto-escucha: tras
+        // varios seguidos se deja de re-armar.
         this.consecutiveRecognitionErrors++;
         if (this.consecutiveRecognitionErrors >= JARVIS_MAX_CONSECUTIVE_RECOGNITION_ERRORS) {
             this.microphoneBlocked = true;
@@ -425,6 +486,249 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // STT local (MediaRecorder + backend faster-whisper)
+    // ---------------------------------------------------------------------------------------------
+
+    protected async startLocalListening(): Promise<void> {
+        if (!this.isMediaRecorderSupported()) {
+            this.warn('MediaRecorder no está soportado en este entorno');
+            this.setState('idle');
+            return;
+        }
+        await this.startAudioLevelMeter();
+        this.beginLocalRecording();
+    }
+
+    /** Pasa del WebSpeech fallido al STT local reutilizando el micrófono ya abierto. */
+    protected async switchToLocalStt(): Promise<void> {
+        this.stopRecognizerOnly();
+        this.cancelSilenceTimer();
+        this.finalTranscript = '';
+        this.interimTranscript = '';
+        await this.startAudioLevelMeter();
+        this.beginLocalRecording();
+    }
+
+    /** Arranca la grabación tras obtener el micrófono, salvo que se haya silenciado mientras tanto. */
+    protected beginLocalRecording(): void {
+        if (this.muted || this.microphoneBlocked) {
+            this.stopAudioLevelMeter();
+            return;
+        }
+        if (!this.microphoneStream) {
+            this.warn('No se pudo acceder al micrófono para la transcripción local');
+            this.setState('idle');
+            return;
+        }
+        this.startMediaRecorder();
+        this.setState(this.localRecording ? 'listening' : 'idle');
+    }
+
+    protected startMediaRecorder(): void {
+        if (!this.microphoneStream || this.localRecording) {
+            return;
+        }
+        this.cancelLocalSilenceTimer();
+        this.cancelLocalMaxRecordingTimer();
+        const options = this.pickMediaRecorderOptions();
+        let recorder: MediaRecorder;
+        try {
+            recorder = options ? new MediaRecorder(this.microphoneStream, options) : new MediaRecorder(this.microphoneStream);
+        } catch (error) {
+            this.warn('No se pudo crear el grabador de audio', error);
+            return;
+        }
+        // Estado por grabación: el `onstop` es asíncrono y puede llegar después de que haya
+        // empezado otra grabación; con estado compartido mezclaría los fragmentos o la cancelación.
+        const session: LocalRecordingSession = {
+            recorder,
+            chunks: [],
+            mimeType: recorder.mimeType || options?.mimeType || 'audio/webm',
+            speechDetected: false,
+            cancelled: false
+        };
+        recorder.ondataavailable = event => {
+            if (event.data && event.data.size > 0) {
+                session.chunks.push(event.data);
+            }
+        };
+        recorder.onstop = () => this.handleLocalRecordingStopped(session);
+        try {
+            recorder.start(250);
+        } catch (error) {
+            this.warn('No se pudo iniciar la grabación de audio', error);
+            return;
+        }
+        this.localRecording = session;
+        this.scheduleLocalMaxRecording();
+    }
+
+    protected pickMediaRecorderOptions(): MediaRecorderOptions | undefined {
+        const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+        for (const mimeType of candidates) {
+            if (MediaRecorder.isTypeSupported(mimeType)) {
+                return { mimeType };
+            }
+        }
+        return undefined;
+    }
+
+    /** Descarta la grabación en curso (mute, stop, pérdida de foco): no se transcribe nada. */
+    protected stopLocalRecording(): void {
+        this.cancelLocalSilenceTimer();
+        this.cancelLocalMaxRecordingTimer();
+        const session = this.localRecording;
+        this.localRecording = undefined;
+        if (!session) {
+            return;
+        }
+        session.cancelled = true;
+        if (session.recorder.state !== 'inactive') {
+            try {
+                session.recorder.stop();
+            } catch {
+                // La grabación ya estaba detenida.
+            }
+        }
+    }
+
+    protected updateLocalSpeechDetection(level: number): void {
+        const session = this.localRecording;
+        if (!session || session.recorder.state === 'inactive') {
+            return;
+        }
+        if (level > JARVIS_SPEECH_RMS_THRESHOLD) {
+            session.speechDetected = true;
+            this.cancelLocalSilenceTimer();
+        } else if (session.speechDetected) {
+            this.scheduleLocalSilence();
+        }
+    }
+
+    protected scheduleLocalSilence(): void {
+        if (this.localSilenceTimerId !== undefined) {
+            return;
+        }
+        this.localSilenceTimerId = window.setTimeout(() => {
+            this.localSilenceTimerId = undefined;
+            this.finalizeLocalTurn();
+        }, JARVIS_SILENCE_TIMEOUT_MS);
+    }
+
+    protected cancelLocalSilenceTimer(): void {
+        if (this.localSilenceTimerId !== undefined) {
+            window.clearTimeout(this.localSilenceTimerId);
+            this.localSilenceTimerId = undefined;
+        }
+    }
+
+    protected scheduleLocalMaxRecording(): void {
+        this.cancelLocalMaxRecordingTimer();
+        this.localMaxRecordingTimerId = window.setTimeout(() => {
+            this.localMaxRecordingTimerId = undefined;
+            this.finalizeLocalTurn();
+        }, JARVIS_MAX_LOCAL_RECORDING_MS);
+    }
+
+    protected cancelLocalMaxRecordingTimer(): void {
+        if (this.localMaxRecordingTimerId !== undefined) {
+            window.clearTimeout(this.localMaxRecordingTimerId);
+            this.localMaxRecordingTimerId = undefined;
+        }
+    }
+
+    /** Cierra el turno (silencio o tope de duración): el `onstop` decide si se transcribe. */
+    protected finalizeLocalTurn(): void {
+        this.cancelLocalSilenceTimer();
+        this.cancelLocalMaxRecordingTimer();
+        const session = this.localRecording;
+        this.localRecording = undefined;
+        if (!session || session.recorder.state === 'inactive') {
+            return;
+        }
+        try {
+            session.recorder.stop();
+        } catch (error) {
+            this.warn('No se pudo detener la grabación de audio', error);
+            this.finishLocalTurnWithoutText();
+        }
+    }
+
+    protected handleLocalRecordingStopped(session: LocalRecordingSession): void {
+        if (this.localRecording === session) {
+            this.localRecording = undefined;
+        }
+        if (session.cancelled) {
+            return;
+        }
+        if (!session.speechDetected || session.chunks.length === 0) {
+            this.finishLocalTurnWithoutText();
+            return;
+        }
+        // Como en el WebSpeech, el micrófono se suelta al cerrar el turno: así el nivel real no
+        // compite con la animación de `thinking`/`speaking`.
+        this.stopAudioLevelMeter();
+        this.setState('thinking');
+        const blob = new Blob(session.chunks, { type: session.mimeType });
+        this.transcribeLocalBlob(blob, session.mimeType).catch(error => this.handleLocalTranscriptionError(error));
+    }
+
+    protected async transcribeLocalBlob(blob: Blob, mimeType: string): Promise<void> {
+        const base64 = await this.blobToBase64(blob);
+        const text = await this.orchestratorServer.transcribeAudio(base64, mimeType, this.config.voiceLang);
+        const trimmed = (text ?? '').trim();
+        if (this.muted) {
+            return;
+        }
+        if (trimmed.length === 0) {
+            this.finishLocalTurnWithoutText();
+            return;
+        }
+        this.onTranscriptEmitter.fire({ text: trimmed, isFinal: true });
+        await this.dispatchVoicePrompt(trimmed);
+    }
+
+    protected handleLocalTranscriptionError(error: unknown): void {
+        this.warn('La transcripción local falló', error);
+        const detail = error instanceof Error && error.message ? `: ${error.message}` : '.';
+        this.onErrorEmitter.fire(`No se pudo transcribir el audio localmente${detail}`);
+        this.finishLocalTurnWithoutText();
+    }
+
+    /**
+     * Turno sin texto: se vuelve a `idle` soltando el micrófono y el controlador re-arma la escucha
+     * (igual que en `handleRecognitionEnd`). Si se silenció entre medias no se toca el estado.
+     */
+    protected finishLocalTurnWithoutText(): void {
+        if (this.muted) {
+            return;
+        }
+        if (!this.localRecording) {
+            this.stopAudioLevelMeter();
+        }
+        if (this.getState() === 'listening' || this.getState() === 'thinking') {
+            this.setState('idle');
+        }
+    }
+
+    protected blobToBase64(blob: Blob): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result;
+                if (typeof result === 'string') {
+                    const comma = result.indexOf(',');
+                    resolve(comma >= 0 ? result.slice(comma + 1) : result);
+                } else {
+                    reject(new Error('FileReader no devolvió una cadena base64'));
+                }
+            };
+            reader.onerror = () => reject(reader.error ?? new Error('No se pudo leer el audio grabado'));
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Audio analyzer (RMS en tiempo real para la animación)
     // ---------------------------------------------------------------------------------------------
 
@@ -432,6 +736,18 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         if (this.analyser) {
             return;
         }
+        if (this.audioMeterPromise) {
+            return this.audioMeterPromise;
+        }
+        this.audioMeterPromise = this.acquireAudioMeter();
+        try {
+            await this.audioMeterPromise;
+        } finally {
+            this.audioMeterPromise = undefined;
+        }
+    }
+
+    protected async acquireAudioMeter(): Promise<void> {
         if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
             return;
         }
@@ -452,7 +768,24 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             this.scheduleAudioLevelTick();
         } catch (error) {
             this.warn('No se pudo acceder al micrófono para el medidor de audio', error);
+            if (this.isPermissionDenied(error)) {
+                this.microphoneBlocked = true;
+                this.onErrorEmitter.fire('No hay acceso al micrófono. Revisa los permisos y reactiva Jarvis.');
+            } else if (this.errorName(error) === 'NotFoundError') {
+                // Sin dispositivo de entrada el re-armado (400 ms) reintentaría en bucle.
+                this.microphoneBlocked = true;
+                this.onErrorEmitter.fire('No se encontró ningún micrófono. Conecta uno y reactiva Jarvis.');
+            }
         }
+    }
+
+    protected isPermissionDenied(error: unknown): boolean {
+        const name = this.errorName(error);
+        return name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError';
+    }
+
+    protected errorName(error: unknown): unknown {
+        return error && typeof error === 'object' ? (error as { name?: unknown }).name : undefined;
     }
 
     protected createAudioContext(): AudioContext | undefined {
@@ -476,7 +809,10 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             }
             const data = new Uint8Array(analyser.fftSize);
             analyser.getByteTimeDomainData(data);
-            this.onAudioLevelEmitter.fire(computeRmsLevel(data));
+            const rawLevel = computeRmsLevel(data, 1);
+            this.currentAudioLevel = rawLevel;
+            this.onAudioLevelEmitter.fire(Math.min(1, rawLevel * JARVIS_RMS_GAIN));
+            this.updateLocalSpeechDetection(rawLevel);
             this.scheduleAudioLevelTick();
         };
         this.audioRafId = window.requestAnimationFrame(tick);
@@ -496,6 +832,7 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             this.audioContext = undefined;
         }
         this.analyser = undefined;
+        this.currentAudioLevel = 0;
         this.onAudioLevelEmitter.fire(0);
     }
 

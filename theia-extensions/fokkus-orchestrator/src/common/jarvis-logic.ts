@@ -22,6 +22,9 @@ import { DEFAULT_JARVIS_CONFIG, JarvisConfig, JarvisState } from './jarvis-proto
 /** Ganancia aplicada al RMS: la voz normal ronda 0.05-0.2 de RMS y la animación necesita 0..1. */
 export const JARVIS_RMS_GAIN = 4;
 
+/** RMS crudo (sin ganancia) por encima del cual se considera que el usuario está hablando. */
+export const JARVIS_SPEECH_RMS_THRESHOLD = 0.05;
+
 function clamp01(value: number): number {
     if (!Number.isFinite(value)) {
         return 0;

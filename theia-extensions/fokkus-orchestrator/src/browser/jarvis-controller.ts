@@ -20,6 +20,7 @@ import {
     JarvisPoint,
     resolveOverlayMouseMode,
     shouldAutoListen,
+    shouldCloseMicrophone,
     shouldReleaseMicrophone
 } from '../common/jarvis-logic';
 import {
@@ -397,7 +398,7 @@ export class JarvisController {
 
     protected evaluateListening(): void {
         const context = this.listenContext();
-        if (shouldReleaseMicrophone(context)) {
+        if (shouldReleaseMicrophone(context) || shouldCloseMicrophone(context)) {
             this.cancelRearm();
             this.audio.stopListening();
             return;

@@ -1049,12 +1049,12 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     /**
-     * Sintetiza `text` a voz con un pipeline dual: primero edge-tts (voz neuronal, requiere red y el
-     * comando `edge-tts` ya instalado en el PATH; nunca se descarga con `uvx`/pip porque PyPI está
-     * vetado) y, si falta, falla o tarda demasiado, espeak-ng (100 % offline). El texto va en un
-     * archivo (`--file` / `-f`): así un texto que empiece por `-` no se toma como opción. Devuelve el
-     * audio en base64 para reproducirlo en el frontend con HTML5 `Audio`, evitando
-     * `window.speechSynthesis` (que en Electron/Linux suele devolver cero voces y no emite sonido).
+     * Sintetiza `text` a voz con un pipeline dual: primero edge-tts (voz neuronal de alta calidad),
+     * probando el binario en el PATH y en `~/.local/bin` (nunca `uvx`/pip: descargarían de PyPI, que
+     * está vetado); si todo falla o tarda demasiado, espeak-ng (100 % offline). El texto va en un archivo
+     * (`--file` / `-f`): así un texto que empiece por `-` no se toma como opción. Devuelve el audio en
+     * base64 para reproducirlo en el frontend con HTML5 `Audio`, evitando `window.speechSynthesis`
+     * (que en Electron/Linux suele devolver cero voces y no emite sonido).
      */
     async synthesizeSpeech(text: string, lang?: string): Promise<SynthesizedAudio> {
         const cleanText = text.replace(/\s+/g, ' ').trim();
@@ -1068,7 +1068,7 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             await fs.writeFile(textFile, cleanText, 'utf8');
             const mp3File = join(tempDir, 'speech.mp3');
             try {
-                await this.runTtsCommand('edge-tts', ['--voice', voice, '--file', textFile, '--write-media', mp3File], JARVIS_TTS_EDGE_TIMEOUT_MS);
+                await this.runEdgeTts(voice, textFile, mp3File);
                 const mp3 = await fs.readFile(mp3File);
                 return { base64Audio: mp3.toString('base64'), mimeType: 'audio/mpeg' };
             } catch (error) {
@@ -1084,14 +1084,40 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
         }
     }
 
+    /**
+     * Intenta sintetizar con un edge-tts YA instalado probando, en orden: el binario en el PATH y en
+     * `~/.local/bin` (el PATH del backend lanzado desde el escritorio no suele incluirlo). No se usa
+     * `uvx edge-tts`: descarga el paquete de PyPI en cada máquina. Lanza el último error si ninguna
+     * variante generó el MP3, para que `synthesizeSpeech` caiga a espeak-ng.
+     */
+    private async runEdgeTts(voice: string, textFile: string, mp3File: string): Promise<void> {
+        const edgeArgs = ['--voice', voice, '--file', textFile, '--write-media', mp3File];
+        const binaries = ['edge-tts', join(os.homedir(), '.local', 'bin', 'edge-tts')];
+        let lastError: unknown;
+        for (const binary of binaries) {
+            try {
+                await this.runTtsCommand(binary, edgeArgs, JARVIS_TTS_EDGE_TIMEOUT_MS);
+                return;
+            } catch (error) {
+                lastError = error;
+                // Solo se prueba la ruta siguiente si este binario no existe: si existe y falla (sin
+                // red, timeout) otra copia fallaría igual y sumaría otro timeout antes de espeak-ng.
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                    break;
+                }
+            }
+        }
+        throw lastError;
+    }
+
     /** Voz neuronal de edge-tts según el idioma de la configuración de Jarvis. */
     private resolveTtsVoice(lang?: string): string {
         const code = (lang || 'es').trim().toLowerCase();
         if (code.startsWith('es-cl')) {
-            return 'es-CL-CatalinaNeural';
+            return 'es-CL-LorenzoNeural';
         }
         if (code.startsWith('es-mx')) {
-            return 'es-MX-DaliaNeural';
+            return 'es-MX-JorgeNeural';
         }
         if (code.startsWith('es')) {
             return 'es-ES-AlvaroNeural';

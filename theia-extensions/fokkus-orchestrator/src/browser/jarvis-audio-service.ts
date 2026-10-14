@@ -34,10 +34,15 @@ import {
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusSwarmDispatchOutcome, FokkusSwarmEvents } from './fokkus-swarm-events';
 
+/** Tajadas conservadas antes de detectar voz: con 100 ms/tajada son ~500 ms de contexto previo. */
+const JARVIS_LOCAL_PREBUFFER_CHUNKS = 5;
+
 /** Una grabación del STT local; cada `MediaRecorder` lleva su propio estado. */
 interface LocalRecordingSession {
     readonly recorder: MediaRecorder;
     readonly chunks: Blob[];
+    /** Últimas tajadas previas a la detección de voz: se anteponen al primer `speechDetected`. */
+    readonly preBuffer: Blob[];
     readonly mimeType: string;
     speechDetected: boolean;
     cancelled: boolean;
@@ -232,6 +237,9 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     public stopListening(): void {
         this.stopLocalRecording();
         this.stopRecognizer();
+        // Al detener la escucha de forma explícita (mute, desactivar Jarvis o perder el foco) se
+        // cierra el micrófono; en los cambios de turno solo se pausa para conservarlo abierto.
+        this.stopAudioLevelMeter();
         if (this.getState() === 'listening') {
             this.setState('idle');
         }
@@ -372,7 +380,6 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
 
     protected stopRecognizer(): void {
         this.cancelSilenceTimer();
-        this.stopAudioLevelMeter();
         this.stopRecognizerOnly();
     }
 
@@ -438,6 +445,7 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     protected finalizeTurn(): void {
         const text = (this.finalTranscript.length > 0 ? this.finalTranscript : this.interimTranscript).trim();
         this.stopRecognizer();
+        this.pauseAudioMeter();
         if (text.length === 0) {
             if (this.getState() === 'listening') {
                 this.setState('idle');
@@ -494,7 +502,7 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             return;
         }
         this.recognizer = undefined;
-        this.stopAudioLevelMeter();
+        this.pauseAudioMeter();
         this.cancelSilenceTimer();
         if (this.getState() === 'listening') {
             this.setState('idle');
@@ -559,18 +567,30 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         const session: LocalRecordingSession = {
             recorder,
             chunks: [],
+            preBuffer: [],
             mimeType: recorder.mimeType || options?.mimeType || 'audio/webm',
             speechDetected: false,
             cancelled: false
         };
         recorder.ondataavailable = event => {
             if (event.data && event.data.size > 0) {
-                session.chunks.push(event.data);
+                if (session.speechDetected) {
+                    session.chunks.push(event.data);
+                } else {
+                    // Antes de detectar voz se guardan las últimas tajadas en un pre-buffer deslizante:
+                    // al detectar habla se anteponen, para no perder la primera sílaba/consonante. La
+                    // primera tajada lleva la cabecera del contenedor (EBML/WebM): nunca se descarta,
+                    // o ffmpeg no podría decodificar el blob.
+                    session.preBuffer.push(event.data);
+                    while (session.preBuffer.length > JARVIS_LOCAL_PREBUFFER_CHUNKS + 1) {
+                        session.preBuffer.splice(1, 1);
+                    }
+                }
             }
         };
         recorder.onstop = () => this.handleLocalRecordingStopped(session);
         try {
-            recorder.start(250);
+            recorder.start(100);
         } catch (error) {
             this.warn('No se pudo iniciar la grabación de audio', error);
             return;
@@ -614,7 +634,12 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             return;
         }
         if (level > JARVIS_SPEECH_RMS_THRESHOLD) {
-            session.speechDetected = true;
+            if (!session.speechDetected) {
+                session.speechDetected = true;
+                // Se antepone el pre-buffer (300-500 ms previos) para no cortar el inicio de frase.
+                session.chunks.push(...session.preBuffer);
+                session.preBuffer.length = 0;
+            }
             this.cancelLocalSilenceTimer();
         } else if (session.speechDetected) {
             this.scheduleLocalSilence();
@@ -681,9 +706,9 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             this.finishLocalTurnWithoutText();
             return;
         }
-        // Como en el WebSpeech, el micrófono se suelta al cerrar el turno: así el nivel real no
-        // compite con la animación de `thinking`/`speaking`.
-        this.stopAudioLevelMeter();
+        // El nivel real no debe competir con la animación de `thinking`/`speaking`: se pausa el
+        // medidor, pero el micrófono queda abierto para el siguiente turno (sin reabrir el hardware).
+        this.pauseAudioMeter();
         this.setState('thinking');
         const blob = new Blob(session.chunks, { type: session.mimeType });
         this.transcribeLocalBlob(blob, session.mimeType).catch(error => this.handleLocalTranscriptionError(error));
@@ -712,15 +737,16 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
     }
 
     /**
-     * Turno sin texto: se vuelve a `idle` soltando el micrófono y el controlador re-arma la escucha
-     * (igual que en `handleRecognitionEnd`). Si se silenció entre medias no se toca el estado.
+     * Turno sin texto: se vuelve a `idle` pausando el medidor (el micrófono queda abierto) y el
+     * controlador re-arma la escucha (igual que en `handleRecognitionEnd`). Si se silenció entre
+     * medias no se toca el estado.
      */
     protected finishLocalTurnWithoutText(): void {
         if (this.muted) {
             return;
         }
         if (!this.localRecording) {
-            this.stopAudioLevelMeter();
+            this.pauseAudioMeter();
         }
         if (this.getState() === 'listening' || this.getState() === 'thinking') {
             this.setState('idle');
@@ -750,6 +776,10 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
 
     protected async startAudioLevelMeter(): Promise<void> {
         if (this.analyser) {
+            // Tras una pausa (al terminar un turno) el micrófono sigue abierto: solo se reanuda la
+            // animación del nivel, sin volver a pedir el hardware de audio (`getUserMedia` tarda
+            // 400-600 ms y se comería la primera sílaba del turno siguiente).
+            this.scheduleAudioLevelTick();
             return;
         }
         if (this.audioMeterPromise) {
@@ -834,11 +864,23 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         this.audioRafId = window.requestAnimationFrame(tick);
     }
 
-    protected stopAudioLevelMeter(): void {
+    /**
+     * Pausa la animación del medidor (emite nivel 0) SIN cerrar el micrófono. Se usa al pasar a
+     * `thinking`/`speaking` y al volver a `idle` sin texto, para que el siguiente turno no tenga que
+     * reabrir el hardware de audio.
+     */
+    protected pauseAudioMeter(): void {
         if (this.audioRafId !== undefined) {
             window.cancelAnimationFrame(this.audioRafId);
             this.audioRafId = undefined;
         }
+        this.currentAudioLevel = 0;
+        this.onAudioLevelEmitter.fire(0);
+    }
+
+    /** Detiene por completo el medidor y cierra el micrófono (solo al silenciar/desactivar Jarvis). */
+    protected stopAudioLevelMeter(): void {
+        this.pauseAudioMeter();
         if (this.microphoneStream) {
             this.microphoneStream.getTracks().forEach(track => track.stop());
             this.microphoneStream = undefined;
@@ -848,8 +890,6 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
             this.audioContext = undefined;
         }
         this.analyser = undefined;
-        this.currentAudioLevel = 0;
-        this.onAudioLevelEmitter.fire(0);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -959,6 +999,16 @@ export class JarvisAudioServiceImpl implements JarvisAudioService {
         this.currentAudioElement = undefined;
         if (this.getState() === 'speaking') {
             this.setState('idle');
+        }
+        // Escucha continua: tras locutar la respuesta se re-arma la grabación local al instante. El
+        // micrófono sigue abierto tras la pausa, así que no se pierde la primera sílaba del turno
+        // siguiente; `startListening` reanuda el medidor RMS y crea el `MediaRecorder`.
+        // Mismas condiciones que el controlador (`shouldAutoListen`): sin Jarvis activo o sin foco
+        // fuera de Modo Gaming no se reabre el micrófono.
+        const focused = typeof document === 'undefined' || document.hasFocus();
+        if (this.config.continuousListening && this.config.enabled && !this.muted && (focused || this.config.gamingMode)
+            && this.shouldUseLocalStt()) {
+            this.startListening().catch(error => this.warn('No se pudo re-armar la escucha continua', error));
         }
     }
 

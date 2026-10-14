@@ -15,6 +15,7 @@ import {
     JARVIS_SPEECH_RMS_THRESHOLD,
     parseStoredJarvisConfig,
     shouldAutoListen,
+    shouldCloseMicrophone,
     shouldReleaseMicrophone
 } from './jarvis-logic';
 import { DEFAULT_JARVIS_CONFIG } from './jarvis-protocol';
@@ -46,7 +47,7 @@ describe('jarvis-logic', () => {
         });
 
         it('el umbral de voz separa el ruido de fondo de la voz normal', () => {
-            const noise = computeRmsLevel(squareWave(3), 1);
+            const noise = computeRmsLevel(squareWave(2), 1);
             const voice = computeRmsLevel(squareWave(20), 1);
             expect(noise).to.be.below(JARVIS_SPEECH_RMS_THRESHOLD);
             expect(voice).to.be.above(JARVIS_SPEECH_RMS_THRESHOLD);
@@ -83,6 +84,16 @@ describe('jarvis-logic', () => {
         it('suelta el micrófono al perder el foco fuera de Modo Gaming', () => {
             expect(shouldReleaseMicrophone({ ...base, state: 'listening', appFocused: false })).to.equal(true);
             expect(shouldReleaseMicrophone({ ...base, state: 'listening', appFocused: false, gamingMode: true })).to.equal(false);
+        });
+
+        it('cierra el micrófono abierto entre turnos (thinking/speaking/idle) sin foco, silenciado o desactivado', () => {
+            for (const state of ['idle', 'thinking', 'speaking'] as const) {
+                expect(shouldCloseMicrophone({ ...base, state, appFocused: false })).to.equal(true);
+                expect(shouldCloseMicrophone({ ...base, state, muted: true })).to.equal(true);
+                expect(shouldCloseMicrophone({ ...base, state, enabled: false })).to.equal(true);
+                expect(shouldCloseMicrophone({ ...base, state })).to.equal(false);
+                expect(shouldCloseMicrophone({ ...base, state, appFocused: false, gamingMode: true })).to.equal(false);
+            }
         });
     });
 

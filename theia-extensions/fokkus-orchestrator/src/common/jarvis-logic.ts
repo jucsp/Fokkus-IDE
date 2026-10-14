@@ -22,8 +22,12 @@ import { DEFAULT_JARVIS_CONFIG, JarvisConfig, JarvisState } from './jarvis-proto
 /** Ganancia aplicada al RMS: la voz normal ronda 0.05-0.2 de RMS y la animación necesita 0..1. */
 export const JARVIS_RMS_GAIN = 4;
 
-/** RMS crudo (sin ganancia) por encima del cual se considera que el usuario está hablando. */
-export const JARVIS_SPEECH_RMS_THRESHOLD = 0.05;
+/**
+ * RMS crudo (sin ganancia) por encima del cual se considera que el usuario está hablando. Un valor
+ * bajo (0.018) captura consonantes iniciales suaves ('s', 'p', 'c', 't') y el inicio de frase, para
+ * no comerse la primera sílaba.
+ */
+export const JARVIS_SPEECH_RMS_THRESHOLD = 0.018;
 
 function clamp01(value: number): number {
     if (!Number.isFinite(value)) {
@@ -124,6 +128,15 @@ export function shouldReleaseMicrophone(context: JarvisListenContext): boolean {
         return context.state === 'listening';
     }
     return context.state === 'listening' && !context.appFocused && !context.gamingMode;
+}
+
+/**
+ * ¿Hay que cerrar el micrófono que queda abierto entre turnos? Como ahora el micrófono no se suelta
+ * al pasar a `thinking`/`speaking`/`idle`, hay que cerrarlo en cualquier estado al desactivar o
+ * silenciar Jarvis, o al perder el foco fuera de Modo Gaming.
+ */
+export function shouldCloseMicrophone(context: JarvisListenContext): boolean {
+    return !context.enabled || context.muted || (!context.appFocused && !context.gamingMode);
 }
 
 export interface JarvisMouseMode {

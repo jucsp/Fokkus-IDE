@@ -2,7 +2,6 @@
 
 ## 📝 To Do (Pendiente)
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #30: Triaje por Voz con Asistente Jarvis (Notificaciones Proactivas y Aprobación Manos Libres).
-- [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #27: Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) conectado al Agente Líder.
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #25: Actividades en modo paralelo (Agente Líder no bloqueante).
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #24: Spec-Driven Development (SDD) Mode.
 - [ ] **[Responsable: Swarm (Claude/DeepSeek)]** Issue #23: Unificar secciones de Pull Requests (GitHub y Bitbucket) en un solo Widget.
@@ -12,6 +11,7 @@
 - [ ] Pruebas de usabilidad por usuarios externos (Amigos en Windows).
 
 ## ✅ Done (Completado)
+- [x] **[Responsable: Swarm (DeepSeek + Claude Code)]** #27 (v1.8.0) — Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) con efecto líquido reactivo en Canvas 2D, STT/TTS nativo, despacho sincronizado con el Agente Líder, modo Gaming con `setIgnoreMouseEvents` y fallback transparente a `$HOME` sin workspace (20/20 PASS unit tests, 0 errores tsc/eslint/build). Publicado en `v1.8.0`.
 - [x] **[Responsable: Swarm (DeepSeek + Claude Code)]** #28 (Mejora v1.7.3) — Aplicación retroactiva automática de reglas de auto-descarte sobre solicitudes existentes al refrescar, descartar o sondear; reparación automática de reglas de remitente con patrones de asunto espurios (12/12 PASS unit tests, 0 errores tsc/eslint/build). Publicado en `v1.7.3`.
 - [x] **[Responsable: Swarm (DeepSeek + Claude Code)]** #28 & #29 (v1.7.2) — Aprendizaje por rechazo en bandeja (Feedback-driven Triage y auto-descarte inteligente) y borrador de respuesta al cliente tras aprobación con validación humana (*Human-in-the-Loop AI Reply*) en Slack y Gmail (24/24 PASS unit tests, 0 errores tsc/eslint, corrección de endpoints de Gmail y prevención CRLF/concurrencia). Publicado en `v1.7.2`.
 - [x] **[Responsable: Swarm (DeepSeek + Claude Code)]** #26 (v1.7.1) — Soporte de credenciales estilo MCP en la Bandeja: Sesión Web en Slack (token `xoxc-` + cookie `d` `xoxd-`) sin requerir app/admin, y credenciales JSON para Google Workspace / Gmail (`client_secret.json` / MCP) con UI adaptativa (17/17 PASS, 26/26 regresión, tsc/eslint OK). Publicado en `v1.7.1`.

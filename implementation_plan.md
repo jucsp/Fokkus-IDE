@@ -1,104 +1,57 @@
-# Plan de Implementación — Issue #26: Bandeja Pre-Kanban (Inbox / Triage) Slack + Gmail → Plane | Jira | GitHub Issues
+# Plan de Implementación — Issue #27: Asistente de Voz en Vivo estilo Jarvis (Desktop Bubble Overlay) conectado al Agente Líder
 
-> Plan detallado, decisiones de arquitectura y criterios de aceptación: `.fokkus/briefs/issue-26-plan.md`.
-> Brief técnico para la Fase 2 (DeepSeek V4 Pro): `.fokkus/briefs/issue-26-deepseek-prompt.md`.
-> El plan anterior (v1.5.0, #6) está en el historial de git.
+## Contexto de Negocio
+Se requiere dotar a Fokkus IDE de una interfaz de voz estilo **Jarvis**, que actúe como la «boca y oídos» del Agente Líder actual de Fokkus Team. Permite interactuar mediante habla natural con el entorno de desarrollo mientras se programa o incluso con el IDE en segundo plano, a través de una burbuja de escritorio flotante permanente (Overlay) con efecto líquido reactivo y protección inteligente para gaming y pantalla completa.
 
-## Contexto de negocio
+### Principios Clave:
+1. **Agnóstico y Open Source (Sin dependencias de pago obligatorias):** Basado en Web Audio API, Web Speech API nativa (Chromium/Electron) y síntesis local nativa, sin requerir APIs propietarias de pago.
+2. **Interfaz de voz del Agente Líder actual:** Se conecta dinámicamente con el proveedor asignado al Product Owner o Líder en Fokkus Team (Antigravity CLI, Claude Code, DeepSeek, Ollama, etc.).
+3. **Desktop Bubble Overlay:** Ventana flotante transparente, arrastrable, sin marco, con animación líquida y onda sinusoidal reactiva al habla del usuario y del asistente.
+4. **Protección Gaming / Fullscreen:** Toggle de mute con clic; en pantalla completa o modo gaming, activa `setIgnoreMouseEvents` para cero interferencias con el mouse o juegos.
+5. **Operación sin workspace:** Permite enviar comandos y consultar a Jarvis aun si no hay ninguna carpeta abierta (fallback a `$HOME`).
 
-Las solicitudes llegan por Gmail corporativo y por el Slack de trabajo, y algunas se pierden. El cliente quiere que
-Fokkus revise ambas fuentes **cada 5 minutos** y deje lo detectado en una **Bandeja Pre-Kanban**, clasificado en
-5 categorías:
+---
 
-1. Soporte
-2. Creación de tickets del equipo
-3. Consultas del cliente
-4. Consultas desde la empresa
-5. Consultas generales de clientes
+## Estado de las Historias de Usuario (HUs)
 
-Nada entra solo a los tableros oficiales: una persona revisa, edita y **aprueba** o **descarta** cada solicitud, para
-no ensuciarlos con falsos positivos ni con conversaciones partidas.
-
-El destino es **agnóstico**: al aprobar se elige **Plane**, **Jira** o **GitHub Issues**, y desde ese proveedor se
-cargan en vivo el proyecto o repo y los sub-contenedores:
-
-- Plane: módulo, estado y labels.
-- Jira: tipo de issue, componentes y sprint.
-- GitHub: labels y milestone.
-
-## Estado
-
-| Fase | Pieza | Responsable | Estado |
+| HU | Alcance | Responsable | Estado |
 |---|---|---|---|
-| 1 | Contrato RPC congelado `src/common/triage-protocol.ts` | Claude (PM/QA) | ✅ |
-| 1 | Frontend completo (bandeja, selector de destino, configuración, notificaciones, binds) | Claude (PM/QA) | ✅ tsc + eslint limpios + E2E 44/44 |
-| 2 | Backend completo (`src/node/triage/*`, `plane-server.ts`, `fokkus-orchestrator-backend-module.ts`) | Claude (Backup por DeepSeek HTTP 402) | ✅ Implementado, `tsc -b` y `theia build` (browser + node) con 0 errores |
-| 3 | QA y suite unitaria del backend (`triage-server.ts`, `unit-triage.test.js`) | DeepSeek V4 Pro | ✅ `eslint` 0 errores + Unit `PASS 25/25` |
+| HU-1 | Soporte de chat sin workspace abierto (Fallback a $HOME) | DeepSeek V4 Pro | 🏃 In Progress |
+| HU-2 | Ventana flotante de escritorio (Desktop Bubble Overlay) y efecto líquido | Claude Code (PM/QA) | 📝 To Do |
+| HU-3 | Control de Mute, menú contextual y modo Gaming / Fullscreen seguro | Claude Code (PM/QA) | 📝 To Do |
+| HU-4 | Pipeline de Audio desacoplado (STT/TTS) y despacho bidireccional al Líder | DeepSeek V4 Pro | 📝 To Do |
+| QA | Verificación de tipos, build Theia Electron, linter y tests | Claude Code (PM/QA) | 📝 To Do |
 
-## HU-0 — Bandeja Pre-Kanban en el IDE (Fase 1, hecha)
+---
 
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Frontend (`src/browser/triage-*.ts(x)`, `style/triage.css`, `fokkus-orchestrator-frontend-module.ts`) +
-  Common (`triage-protocol.ts`)
-- 📌 **Objetivo técnico:** vista lateral «Bandeja de solicitudes» con:
-  - estado del sondeo, con pausar/reanudar y «Revisar ahora»;
-  - filtros por estado, origen y categoría, y búsqueda;
-  - edición rápida de título, descripción y categoría;
-  - selector agnóstico Plane | Jira | GitHub con carga jerárquica dinámica;
-  - Aprobar, Descartar y Restaurar;
-  - notificación de solicitudes nuevas;
-  - configuración de Slack, Gmail y Jira con inputs ofuscados.
-
-## HU-1 — Persistencia, configuración y RPC base
-
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`src/node/triage/triage-store.ts`, `triage-config.ts`, `triage-server.ts`, backend module)
+## HU-1 — Soporte de chat sin workspace abierto (Fallback a $HOME)
+- 📁 **Repositorio:** `theia-extensions/fokkus-orchestrator`
+- 🎯 **Capa:** Backend (`src/node/fokkus-orchestrator-server.ts`) y Frontend (`src/browser/fokkus-orchestrator-widget.tsx`).
 - 📌 **Objetivo técnico:**
-  - almacenamiento atómico de ítems y cursores;
-  - configuración con secretos en el keystore del SO (precedencia env > almacén);
-  - operaciones sobre ítems con validación estricta;
-  - difusión de eventos a todas las ventanas conectadas.
+  - En `resolveWorkspaceRoot()` y `getEffectiveCwd()`, si no hay workspace abierto, resolver a `os.homedir()` en lugar de lanzar una excepción fatal.
+  - En `ensureProjectDocumentationFiles(cwd)`, si `cwd === os.homedir()`, evitar crear archivos sueltos `backlog.md` ni `technical_memory.md` en el home del usuario (usar `~/.fokkus/`).
+  - En el frontend de chat, no deshabilitar ni bloquear el input si `getWorkspacePath()` está vacío.
 
-## HU-2 — Fuente Slack (solo lectura)
+## HU-2 — Ventana flotante de escritorio (Desktop Bubble Overlay)
+- 📁 **Repositorio:** `theia-extensions/fokkus-orchestrator`, `applications/electron`
+- 🎯 **Capa:** Electron Overlay Window & Renderer (HTML/Canvas 2D).
+- 📌 **Objetivo técnico:**
+  - Crear ventana secundaria en Electron: `width: 150, height: 150`, `transparent: true`, `frame: false`, `alwaysOnTop: true`, `skipTaskbar: true`, `hasShadow: false`.
+  - Renderizado orgánico en Canvas 2D: burbuja líquida con gradiente y onda de sonido sinusoidal reactiva al volumen de voz y estados (idle, listening, thinking, speaking, muted).
+  - Región arrastrable con `-webkit-app-region: drag`.
 
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`src/node/triage/sources/slack-source.ts`)
-- 📌 **Objetivo técnico:** lectura incremental por cursor de los canales configurados, un ítem por hilo, filtrado de
-  ruido y manejo del rate limit sin perder mensajes.
+## HU-3 — Control de Mute, menú contextual y modo Gaming / Fullscreen
+- 📁 **Repositorio:** `theia-extensions/fokkus-orchestrator`
+- 🎯 **Capa:** Overlay Event & Input Management.
+- 📌 **Objetivo técnico:**
+  - Clic en la burbuja: toggle instantáneo de Mute/Escucha.
+  - Clic derecho: menú contextual ("Silenciar/Activar", "Seguir oyendo en segundo plano", "Abrir chat del IDE", "Ocultar Jarvis").
+  - Modo seguro gaming: cuando se requiera o esté en pantalla completa, invocar `win.setIgnoreMouseEvents(true, { forward: true })` para transparencia de clics sin robar el foco del ratón.
 
-## HU-3 — Fuente Gmail (solo lectura)
-
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`src/node/triage/sources/gmail-source.ts`)
-- 📌 **Objetivo técnico:** OAuth con refresh token (scope `gmail.readonly`), lectura de los hilos de la búsqueda
-  configurada, extracción de texto plano, detección de correos automáticos y un ítem por hilo.
-
-## HU-4 — Clasificador de 5 categorías y sondeo de 5 minutos
-
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`src/node/triage/triage-classifier.ts`, `triage-poller.ts`)
-- 📌 **Objetivo técnico:** clasificador puro y explicable con confianza, más un poller sin solapamiento, con pausa
-  persistida y aislamiento de fallos por fuente.
-
-## HU-5 — Adaptadores de destino Plane, Jira y GitHub Issues
-
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`src/node/triage/targets/*.ts`, refactor mínimo de `plane-server.ts`)
-- 📌 **Objetivo técnico:** una interfaz común de adaptador con listado jerárquico (contenedores → grupos de opciones),
-  creación del ticket con endpoints de escritura en lista blanca y aprobación idempotente. `github-server.ts` sigue
-  siendo de solo lectura.
-
-## HU-6 — Pruebas de conexión
-
-- 📁 **Repositorio:** `Fokkus-IDE/theia-extensions/fokkus-orchestrator`
-- 🎯 **Capa:** Backend (`triage-server.ts`)
-- 📌 **Objetivo técnico:** un único GET de verificación por fuente o destino, con resultado legible y sin secretos.
-
-## QA (Claude)
-
-- `tsc -b`, bundle del navegador y eslint.
-- Unit tests sin red: clasificador, anti-ruido, cursores, lista blanca HTTP, idempotencia y que no se filtren secretos.
-- E2E con Puppeteer: HOME aislado y mocks de Slack, Gmail, Plane, Jira y GitHub, con auditoría de métodos (0
-  escrituras hacia las fuentes).
-- Regresión de v1.4.x, v1.5.0 y #22.
-- **Sin commit ni push** sin autorización.
+## HU-4 — Pipeline de Audio desacoplado (STT/TTS) y despacho bidireccional al Líder
+- 📁 **Repositorio:** `theia-extensions/fokkus-orchestrator`
+- 🎯 **Capa:** Audio & Orchestrator RPC Service.
+- 📌 **Objetivo técnico:**
+  - Captura y reconocimiento de voz (STT) con Web Speech Recognition nativo en Electron.
+  - Síntesis de voz (TTS) con SpeechSynthesis nativo (`es-ES`, `es-CL`, `es-419`), modulando la onda interna durante la reproducción.
+  - Envío automático del texto reconocido al Agente Líder de Fokkus Team (`dispatchSwarm`), sincronizando la transcripción y la respuesta en vivo en el chat del IDE.

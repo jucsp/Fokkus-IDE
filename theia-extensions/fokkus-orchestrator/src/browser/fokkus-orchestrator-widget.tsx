@@ -21,6 +21,7 @@ import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { ConfirmDialog } from '@theia/core/lib/browser';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { FokkusSwarmEvents } from './fokkus-swarm-events';
 
 import {
     APPROVAL_REQUEST_FENCE,
@@ -1270,6 +1271,7 @@ interface FokkusChatAppProps {
     workspaceService: WorkspaceService;
     subscribeExternalPrompts: (listener: (text: string) => void) => { dispose(): void };
     messageService: MessageService;
+    swarmEvents: FokkusSwarmEvents;
 }
 
 interface ApprovalContextValue {
@@ -1411,7 +1413,9 @@ const CustomPreComponent: Components['pre'] = ({ node, children, ...props }) => 
     return isApproval ? <>{children}</> : <pre {...props}>{children}</pre>;
 };
 
-function FokkusChatApp({ preferenceService, orchestratorServer, commandService, workspaceService, subscribeExternalPrompts, messageService }: FokkusChatAppProps): React.ReactElement {
+function FokkusChatApp({
+    preferenceService, orchestratorServer, commandService, workspaceService, subscribeExternalPrompts, messageService, swarmEvents
+}: FokkusChatAppProps): React.ReactElement {
     const [messages, setMessages] = React.useState<ChatMessage[]>([{
         id: nextChatMessageId(),
         role: 'assistant',
@@ -1423,6 +1427,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
     const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
     const [loadingText, setLoadingText] = React.useState('Procesando...');
     const [executionMode, setExecutionMode] = React.useState<ExecutionMode>(() => readExecutionMode(preferenceService));
+    const [workspaceMissing, setWorkspaceMissing] = React.useState(false);
 
     const loadingTexts = React.useMemo(() => ['Procesando...', 'Analizando...', 'Consultando Agente...', 'Generando respuesta...'], []);
 
@@ -1483,8 +1488,19 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
 
     React.useEffect(() => {
         let disposed = false;
+        const refreshWorkspaceState = () => {
+            if (disposed) {
+                return;
+            }
+            const workspacePath = getWorkspacePath(workspaceService);
+            setWorkspaceMissing(workspacePath.trim().length === 0);
+        };
+        const subscription = workspaceService.onWorkspaceChanged(() => refreshWorkspaceState());
         workspaceService.ready.then(() => {
-            if (disposed) return;
+            if (disposed) {
+                return;
+            }
+            refreshWorkspaceState();
             const workspacePath = getWorkspacePath(workspaceService);
             orchestratorServer.loadChatHistory(workspacePath).then(history => {
                 // Si el usuario ya envió un mensaje, el historial tardío se ignora
@@ -1506,7 +1522,10 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                     }
                 });
         });
-        return () => { disposed = true; };
+        return () => {
+            disposed = true;
+            subscription.dispose();
+        };
     }, [orchestratorServer, workspaceService]);
 
     React.useEffect(() => {
@@ -1717,6 +1736,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             const assignments = normalizeTeamAssignments(preferenceService.get(TEAM_PREFERENCE_KEY));
             const dispatchMode = readExecutionMode(preferenceService);
             const result = await orchestratorServer.dispatchToSwarm(workspacePath, trimmed, dispatchMode, assignments, providersState, currentAttachments, rolesState);
+            swarmEvents.fireDispatchFinished({ prompt: trimmed, result });
             
 
             const resultMessages = result.roleResults.map(r => {
@@ -1770,6 +1790,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         } catch (error) {
             const description = error instanceof Error ? error.message : String(error);
             console.error('[fokkus-orchestrator] No se pudo despachar la instrucción al Swarm', error);
+            swarmEvents.fireDispatchFinished({ prompt: trimmed, error: description });
             
             const errorMsg: ChatMessage = {
                 id: nextChatMessageId(),
@@ -1789,7 +1810,7 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
             setDispatching(false);
             setStopping(false);
         }
-    }, [promptText, dispatching, preferenceService, orchestratorServer, attachments, messages, workspaceService]);
+    }, [promptText, dispatching, preferenceService, orchestratorServer, attachments, messages, workspaceService, swarmEvents]);
 
     // dispatchPrompt cambia de identidad en cada render; se guarda en un ref para que
     // el listener de prompts externos siempre llame a la versión más reciente.
@@ -1811,10 +1832,11 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
         if (dispatchingRef.current) {
             setPromptText(text);
             messageService.warn('Fokkus Team está ocupado: el prompt quedó en el cuadro de texto para enviarlo cuando termine.');
+            swarmEvents.fireDispatchFinished({ prompt: text.trim(), busy: true });
             return;
         }
         dispatchPromptRef.current(text).catch(error => console.error('[fokkus-orchestrator] No se pudo enviar el prompt externo', error));
-    }, [messageService]);
+    }, [messageService, swarmEvents]);
     const handleExternalPromptRef = React.useRef(handleExternalPrompt);
     handleExternalPromptRef.current = handleExternalPrompt;
     const historyReadyRef = React.useRef(historyReady);
@@ -1906,6 +1928,12 @@ function FokkusChatApp({ preferenceService, orchestratorServer, commandService, 
                     <span className='fokkus-chat-usage-label'>Compactar</span>
                 </button>
             </div>
+            {workspaceMissing && (
+                <div className='fokkus-chat-no-workspace' title='No hay una carpeta de proyecto abierta. Fokkus Team trabajará en $HOME.'>
+                    <i className='fa fa-folder-open-o' />
+                    <span>Sin proyecto abierto (ejecutando en $HOME)</span>
+                </div>
+            )}
             <div className='fokkus-chat-inputbar'>
                 <button
                     type='button'
@@ -2010,6 +2038,9 @@ export class FokkusChatWidget extends ReactWidget {
     @inject(MessageService)
     protected readonly messageService: MessageService;
 
+    @inject(FokkusSwarmEvents)
+    protected readonly swarmEvents: FokkusSwarmEvents;
+
     protected readonly onExternalPromptEmitter = new Emitter<string>();
     protected pendingPrompts: string[] = [];
     protected hasPromptListener = false;
@@ -2060,6 +2091,7 @@ export class FokkusChatWidget extends ReactWidget {
                 workspaceService={this.workspaceService}
                 subscribeExternalPrompts={this.subscribeExternalPrompts}
                 messageService={this.messageService}
+                swarmEvents={this.swarmEvents}
             />
         );
     }

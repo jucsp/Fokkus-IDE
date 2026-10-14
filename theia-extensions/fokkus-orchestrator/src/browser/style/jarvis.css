@@ -1,0 +1,163 @@
+/* Jarvis Voice Assistant (#27, Fase 3): burbuja líquida flotante, badge, transcripción y menú.
+   Estas reglas se copian también a la ventana overlay de Electron, que no carga el tema de Theia:
+   por eso cada color tiene un valor de respaldo fijo. */
+
+.fokkus-jarvis-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10000;
+}
+
+.fokkus-jarvis-layer--overlay {
+    background: transparent;
+}
+
+.fokkus-jarvis {
+    position: absolute;
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--theia-ui-font-family, 'Inter', 'Segoe UI', sans-serif);
+    font-size: 12px;
+    color: #e5e7eb;
+    user-select: none;
+}
+
+.fokkus-jarvis--overlay {
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    justify-content: flex-start;
+    padding-top: 8px;
+    box-sizing: border-box;
+}
+
+.fokkus-jarvis-bubble {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.fokkus-jarvis--dragging .fokkus-jarvis-bubble {
+    cursor: grabbing;
+}
+
+.fokkus-jarvis-canvas {
+    display: block;
+}
+
+.fokkus-jarvis-badge {
+    margin-top: -14px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    font-size: 10.5px;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.fokkus-jarvis-badge--idle { color: #7dd3fc; }
+.fokkus-jarvis-badge--listening { color: #22d3ee; border-color: rgba(34, 211, 238, 0.6); }
+.fokkus-jarvis-badge--thinking { color: #e879f9; border-color: rgba(192, 38, 211, 0.6); }
+.fokkus-jarvis-badge--speaking { color: #34d399; border-color: rgba(16, 185, 129, 0.6); }
+.fokkus-jarvis-badge--muted { color: #fbbf24; border-color: rgba(245, 158, 11, 0.6); }
+
+.fokkus-jarvis-badge-gaming {
+    margin-left: 4px;
+    color: #a3e635;
+}
+
+.fokkus-jarvis-transcript {
+    max-width: 240px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    line-height: 1.4;
+    word-break: break-word;
+    pointer-events: auto;
+    animation: fokkus-jarvis-fade-in 160ms ease-out;
+}
+
+.fokkus-jarvis-transcript-who {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.75;
+}
+
+.fokkus-jarvis-transcript--user-interim { font-style: italic; opacity: 0.8; }
+.fokkus-jarvis-transcript--assistant { border-color: rgba(16, 185, 129, 0.5); }
+.fokkus-jarvis-transcript--error { border-color: rgba(248, 113, 113, 0.6); color: #fecaca; }
+
+.fokkus-jarvis-menu {
+    position: absolute;
+    width: 236px;
+    padding: 4px 0;
+    border-radius: 6px;
+    background: var(--theia-menu-background, #1f2937);
+    color: var(--theia-menu-foreground, #e5e7eb);
+    border: 1px solid var(--theia-menu-border, rgba(148, 163, 184, 0.35));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+    z-index: 1;
+}
+
+.fokkus-jarvis-menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 6px 12px 6px 4px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.fokkus-jarvis-menu-item:hover,
+.fokkus-jarvis-menu-item:focus-visible {
+    background: var(--theia-menu-selectionBackground, #2563eb);
+    color: var(--theia-menu-selectionForeground, #ffffff);
+    outline: none;
+}
+
+.fokkus-jarvis-menu-check {
+    display: inline-block;
+    width: 18px;
+    flex: none;
+    text-align: center;
+}
+
+.fokkus-jarvis-menu-item:not(:has(.fokkus-jarvis-menu-check)) {
+    padding-left: 22px;
+}
+
+.fokkus-jarvis-menu-separator {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--theia-menu-separatorBackground, rgba(148, 163, 184, 0.25));
+}
+
+.fokkus-jarvis-status--listening { color: #22d3ee !important; }
+.fokkus-jarvis-status--thinking { color: #e879f9 !important; }
+.fokkus-jarvis-status--speaking { color: #34d399 !important; }
+.fokkus-jarvis-status--muted { color: #fbbf24 !important; }
+
+@keyframes fokkus-jarvis-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+}

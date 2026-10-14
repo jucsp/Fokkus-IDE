@@ -249,7 +249,13 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
      * y el .gitignore para el workspace actual.
      */
     private async ensureProjectDocumentationFiles(cwd: string): Promise<void> {
-        
+        // Sin workspace abierto: NO se deben crear backlog.md ni technical_memory.md en
+        // la raíz de $HOME. Solo se garantiza que exista el directorio ~/.fokkus.
+        if (this.isHomeDirectory(cwd)) {
+            await fs.mkdir(join(os.homedir(), '.fokkus'), { recursive: true });
+            return;
+        }
+
         // 1. Memoria técnica en .fokkus/
         const memoryPath = join(cwd, '.fokkus', 'technical_memory.md');
         try {
@@ -920,11 +926,25 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
     }
 
     private async resolveWorkspaceRoot(): Promise<string> {
-        const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
-        if (!workspaceUri) {
-            throw new Error('No hay un workspace abierto en Fokkus IDE');
+        try {
+            const workspaceUri = await this.workspaceServer.getMostRecentlyUsedWorkspace();
+            if (!workspaceUri) {
+                return os.homedir();
+            }
+            return FileUri.fsPath(workspaceUri);
+        } catch {
+            // Sin workspace (o si el servicio falla): Fokkus Team opera en $HOME.
+            return os.homedir();
         }
-        return FileUri.fsPath(workspaceUri);
+    }
+
+    /** Indica si la ruta apunta exactamente al directorio home del usuario. */
+    private isHomeDirectory(path: string): boolean {
+        if (!path) {
+            return false;
+        }
+        const strip = (p: string): string => p.replace(/[\\/]+$/, '');
+        return strip(path) === strip(os.homedir());
     }
 
     /**
@@ -944,6 +964,10 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     private async resolveWorkspaceSettingsPath(): Promise<string> {
         const root = await this.resolveWorkspaceRoot();
+        if (this.isHomeDirectory(root)) {
+            // Sin workspace: la configuración global vive en ~/.theia-ide/settings.json.
+            return join(os.homedir(), '.theia-ide', 'settings.json');
+        }
         return join(root, '.theia', 'settings.json');
     }
 
@@ -953,6 +977,10 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
 
     private async resolveChatHistoryPath(workspacePath: string): Promise<string> {
         const cwd = await this.getEffectiveCwd(workspacePath);
+        if (this.isHomeDirectory(cwd)) {
+            // Sin workspace: el historial del chat vive en ~/.fokkus/chat_history.json.
+            return join(os.homedir(), '.fokkus', 'chat_history.json');
+        }
         return join(cwd, '.fokkus', 'chat_history.json');
     }
 

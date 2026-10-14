@@ -26,11 +26,17 @@ export class FokkusChatDispatcher {
     protected readonly shell: ApplicationShell;
 
     async send(text: string): Promise<void> {
+        const chat = await this.open();
+        chat.sendPrompt(text);
+    }
+
+    /** Abre y activa el chat de Fokkus Team sin enviar nada. */
+    async open(): Promise<FokkusChatWidget> {
         const chat = await this.widgetManager.getOrCreateWidget<FokkusChatWidget>(FokkusChatWidget.ID);
         if (!chat.isAttached) {
             await this.shell.addWidget(chat, { area: 'left', rank: 100 });
         }
         await this.shell.activateWidget(chat.id);
-        chat.sendPrompt(text);
+        return chat;
     }
 }

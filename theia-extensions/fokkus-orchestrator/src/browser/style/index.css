@@ -1,6 +1,7 @@
 @import '@xyflow/react/dist/style.css';
 
 @import '@xyflow/react/dist/style.css';
+@import './jarvis.css';
 
 .fokkus-orchestrator {
     padding: 20px 18px 32px;
@@ -937,6 +938,17 @@
 .fokkus-chat-markdown svg {
     max-width: 100%;
     height: auto;
+}
+
+.fokkus-chat-no-workspace {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 18px 0;
+    font-size: 0.78rem;
+    color: var(--theia-descriptionForeground, rgba(255, 255, 255, 0.55));
+    background: var(--theia-editor-background);
 }
 
 .fokkus-chat-inputbar {

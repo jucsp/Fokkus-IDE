@@ -24,12 +24,14 @@ import { BitbucketServer, BitbucketServerPath } from '../common/bitbucket-protoc
 import { FokkusOrchestratorServer, FokkusOrchestratorServerPath } from '../common/fokkus-orchestrator-protocol';
 import { GitCredentialsServer, GitCredentialsServerPath } from '../common/git-credentials-protocol';
 import { GitHubServer, GitHubServerPath } from '../common/github-protocol';
+import { JarvisAudioService } from '../common/jarvis-protocol';
 import { PlaneServer, PlaneServerPath } from '../common/plane-protocol';
 import { TriageServer, TriageServerPath } from '../common/triage-protocol';
 import { BitbucketPullRequestsWidget } from './bitbucket-pull-requests-widget';
 import { BitbucketScmContribution } from './bitbucket-scm-contribution';
 import { FokkusChatDispatcher } from './fokkus-chat-dispatch';
 import { FokkusOrchestratorContribution } from './fokkus-orchestrator-contribution';
+import { FokkusSwarmEvents } from './fokkus-swarm-events';
 import { FokkusChatWidget, FokkusSettingsWidget } from './fokkus-orchestrator-widget';
 import {
     GitProvidersCommandContribution,
@@ -44,6 +46,9 @@ import { GitHubKanbanContribution } from './github-kanban-contribution';
 import { GitHubKanbanWidget } from './github-kanban-widget';
 import { GitHubPullRequestsWidget } from './github-pull-requests-widget';
 import { GitHubScmContribution } from './github-scm-contribution';
+import { JarvisAudioServiceImpl } from './jarvis-audio-service';
+import { JarvisContribution } from './jarvis-contribution';
+import { JarvisController } from './jarvis-controller';
 import { PlaneBacklogContribution } from './plane-backlog-contribution';
 import { PlaneBacklogWidget } from './plane-backlog-widget';
 import { PlaneKanbanContribution } from './plane-kanban-contribution';
@@ -119,6 +124,16 @@ export default new ContainerModule(bind => {
     }).inSingletonScope();
 
     bind(FokkusChatDispatcher).toSelf().inSingletonScope();
+    bind(FokkusSwarmEvents).toSelf().inSingletonScope();
+
+    // Asistente de voz Jarvis (#27): servicio de audio STT/TTS + despacho al Agente Líder.
+    bind(JarvisAudioService).to(JarvisAudioServiceImpl).inSingletonScope();
+    // Fase 3: burbuja flotante, barra de estado y comandos. La ventana overlay de Electron
+    // (`JarvisOverlayWindowServer`) se enlaza en electron-browser/jarvis-electron-frontend-module.
+    bind(JarvisController).toSelf().inSingletonScope();
+    bind(JarvisContribution).toSelf().inSingletonScope();
+    bind(CommandContribution).toService(JarvisContribution);
+    bind(FrontendApplicationContribution).toService(JarvisContribution);
 
     bind(GitHubPullRequestsWidget).toSelf();
     bind(WidgetFactory).toDynamicValue(context => ({

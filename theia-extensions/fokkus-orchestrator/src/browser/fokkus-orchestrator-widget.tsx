@@ -16,12 +16,13 @@ import { PreferenceScope, PreferenceService } from '@theia/core/lib/common';
 import { CommandService } from '@theia/core/lib/common/command';
 import { Emitter } from '@theia/core/lib/common/event';
 import { MessageService } from '@theia/core/lib/common/message-service';
-import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
+import { inject, injectable, optional, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { ConfirmDialog } from '@theia/core/lib/browser';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { FokkusSwarmEvents } from './fokkus-swarm-events';
+import { JarvisCompanionInfo, JarvisCompanionServer } from '../common/jarvis-companion-protocol';
 
 import {
     APPROVAL_REQUEST_FENCE,
@@ -1001,10 +1002,145 @@ function WorkspacePanel({ preferenceService }: WorkspacePanelProps): React.React
 }
 
 /* ------------------------------------------------------------------------ */
+/* Jarvis panel — acceso directo al asistente nativo externo                */
+/* ------------------------------------------------------------------------ */
+
+/** Página de descargas del compañero Jarvis, desarrollado en un repositorio aparte. */
+const JARVIS_COMPANION_RELEASES_URL = 'https://github.com/jucsp/Fokkus-Jarvis/releases';
+
+interface JarvisPanelProps {
+    companionServer: JarvisCompanionServer | undefined;
+    windowService: WindowService;
+}
+
+function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): React.ReactElement {
+    const [info, setInfo] = React.useState<JarvisCompanionInfo | undefined>(undefined);
+    const [loading, setLoading] = React.useState(false);
+    const [starting, setStarting] = React.useState(false);
+    const [error, setError] = React.useState<string | undefined>(undefined);
+
+    const refresh = React.useCallback(async () => {
+        if (!companionServer) {
+            setError('El conector de Fokkus-Jarvis no está disponible en este backend.');
+            return;
+        }
+        setLoading(true);
+        try {
+            const next = await companionServer.getCompanionInfo();
+            setInfo(next);
+            setError(undefined);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'No se pudo consultar el estado de Fokkus-Jarvis.');
+        } finally {
+            setLoading(false);
+        }
+    }, [companionServer]);
+
+    React.useEffect(() => {
+        refresh().catch(() => undefined);
+    }, [refresh]);
+
+    const openReleases = React.useCallback(() => {
+        windowService.openNewWindow(JARVIS_COMPANION_RELEASES_URL, { external: true });
+    }, [windowService]);
+
+    const startJarvis = React.useCallback(async () => {
+        if (!companionServer) {
+            return;
+        }
+        setStarting(true);
+        try {
+            const result = await companionServer.startJarvis();
+            if (!result.success) {
+                setError(result.error ?? 'No se pudo iniciar Fokkus-Jarvis.');
+            }
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'No se pudo iniciar Fokkus-Jarvis.');
+        } finally {
+            setStarting(false);
+            await refresh();
+        }
+    }, [companionServer, refresh]);
+
+    const status = info?.status;
+
+    return (
+        <>
+            <header className='fokkus-orchestrator-header'>
+                <h2 className='fokkus-orchestrator-title'>Jarvis — Asistente de Voz Externo</h2>
+                <p className='fokkus-orchestrator-subtitle'>
+                    Jarvis es una aplicación nativa e independiente desarrollada en Rust. Ya no forma parte de Fokkus IDE
+                    para mantener el editor ultraligero y compatible.
+                </p>
+            </header>
+
+            <div className='fokkus-jarvis-panel'>
+                {error && (
+                    <p className='fokkus-jarvis-message fokkus-jarvis-message--error'>
+                        <i className='fa fa-exclamation-triangle' /> {error}
+                    </p>
+                )}
+
+                {status === 'connected' && (
+                    <>
+                        <div className='fokkus-jarvis-badge fokkus-jarvis-badge--connected'>
+                            <i className='fa fa-check-circle' />
+                            <span>Conectado y sincronizado</span>
+                        </div>
+                        <p className='fokkus-jarvis-socket'>
+                            Socket: <code>{info?.socketPath}</code>
+                        </p>
+                        <button
+                            type='button'
+                            className='fokkus-help-use-btn'
+                            onClick={() => { refresh().catch(() => undefined); }}
+                            disabled={loading}
+                        >
+                            <i className='fa fa-refresh' />
+                            <span>{loading ? 'Verificando…' : 'Verificar conexión'}</span>
+                        </button>
+                    </>
+                )}
+
+                {status === 'installed-stopped' && (
+                    <>
+                        <p className='fokkus-jarvis-message'>
+                            Fokkus-Jarvis está instalado pero no se está ejecutando. Inícialo para que supervise el equipo.
+                        </p>
+                        <button
+                            type='button'
+                            className='fokkus-help-use-btn'
+                            onClick={() => { startJarvis().catch(() => undefined); }}
+                            disabled={starting}
+                        >
+                            <i className='fa fa-play' />
+                            <span>{starting ? 'Iniciando…' : 'Iniciar Jarvis'}</span>
+                        </button>
+                    </>
+                )}
+
+                {(status === 'not-installed' || (status === undefined && !error)) && (
+                    <>
+                        <p className='fokkus-jarvis-message'>
+                            Jarvis no está instalado. Descarga la última versión desde GitHub Releases para habilitar el
+                            asistente de voz nativo.
+                        </p>
+                        <button type='button' className='fokkus-help-use-btn' onClick={openReleases}>
+                            <i className='fa fa-cloud-download' />
+                            <span>Descargar e Instalar Fokkus-Jarvis</span>
+                        </button>
+                    </>
+                )}
+            </div>
+        </>
+    );
+}
+
+/* ------------------------------------------------------------------------ */
 /* Settings widget — Providers / Roles / Team / Workspace tabs              */
 /* ------------------------------------------------------------------------ */
 
-type FokkusSettingsTabId = 'providers' | 'roles' | 'team' | 'workspace';
+type FokkusSettingsTabId = 'providers' | 'roles' | 'team' | 'workspace' | 'jarvis';
 
 interface FokkusSettingsTabDefinition {
     id: FokkusSettingsTabId;
@@ -1016,16 +1152,18 @@ const FOKKUS_SETTINGS_TABS: FokkusSettingsTabDefinition[] = [
     { id: 'providers', label: 'Providers', icon: 'fa fa-plug' },
     { id: 'roles', label: 'Roles', icon: 'fa fa-id-badge' },
     { id: 'team', label: 'Team', icon: 'fa fa-users' },
-    { id: 'workspace', label: 'Workspace', icon: 'fa fa-sliders' }
+    { id: 'workspace', label: 'Workspace', icon: 'fa fa-sliders' },
+    { id: 'jarvis', label: 'Jarvis', icon: 'fa fa-microphone' }
 ];
 
 interface FokkusSettingsAppProps {
     preferenceService: PreferenceService;
     orchestratorServer: FokkusOrchestratorServer;
     windowService: WindowService;
+    companionServer: JarvisCompanionServer | undefined;
 }
 
-function FokkusSettingsApp({ preferenceService, orchestratorServer, windowService }: FokkusSettingsAppProps): React.ReactElement {
+function FokkusSettingsApp({ preferenceService, orchestratorServer, windowService, companionServer }: FokkusSettingsAppProps): React.ReactElement {
     const [activeTab, setActiveTab] = React.useState<FokkusSettingsTabId>('providers');
     const [providersState, setProvidersState] = React.useState<ProvidersState>(() => normalizeProvidersState(preferenceService.get(PROVIDERS_PREFERENCE_KEY)));
     const [rolesState, setRolesState] = React.useState<RolesState>(() => normalizeRolesState(preferenceService.get(ROLES_PREFERENCE_KEY)));
@@ -1199,6 +1337,7 @@ function FokkusSettingsApp({ preferenceService, orchestratorServer, windowServic
                 />
             )}
             {activeTab === 'workspace' && <WorkspacePanel preferenceService={preferenceService} />}
+            {activeTab === 'jarvis' && <JarvisPanel companionServer={companionServer} windowService={windowService} />}
         </div>
     );
 }
@@ -1218,6 +1357,9 @@ export class FokkusSettingsWidget extends ReactWidget {
     @inject(WindowService)
     protected readonly windowService: WindowService;
 
+    @inject(JarvisCompanionServer) @optional()
+    protected readonly companionServer: JarvisCompanionServer | undefined;
+
     @postConstruct()
     protected init(): void {
         this.id = FokkusSettingsWidget.ID;
@@ -1234,6 +1376,7 @@ export class FokkusSettingsWidget extends ReactWidget {
                 preferenceService={this.preferenceService}
                 orchestratorServer={this.orchestratorServer}
                 windowService={this.windowService}
+                companionServer={this.companionServer}
             />
         );
     }

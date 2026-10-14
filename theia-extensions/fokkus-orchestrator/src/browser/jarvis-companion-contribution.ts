@@ -157,19 +157,19 @@ export class JarvisCompanionContribution implements CommandContribution, Fronten
             case 'connected':
                 return {
                     text: '$(radio-tower) Jarvis: Conectado',
-                    tooltip: 'Jarvis conectado y supervisando el Swarm. Clic para opciones',
+                    tooltip: 'Jarvis conectado y supervisando el Swarm',
                     command: JarvisCompanionCommands.CHECK.id
                 };
             case 'installed-stopped':
                 return {
-                    text: '$(circle-slash) Jarvis: Detenido',
-                    tooltip: 'Fokkus-Jarvis está instalado pero apagado. Clic para iniciar',
+                    text: '$(play) Iniciar Jarvis',
+                    tooltip: 'Fokkus-Jarvis está instalado. Clic para ejecutar el asistente nativo',
                     command: JarvisCompanionCommands.START.id
                 };
             default:
                 return {
-                    text: '$(cloud-download) Jarvis: No instalado',
-                    tooltip: 'Fokkus-Jarvis no está instalado. Clic para descargar',
+                    text: '$(cloud-download) Descargar Jarvis',
+                    tooltip: 'Fokkus-Jarvis no está instalado. Clic para descargar desde GitHub',
                     command: JarvisCompanionCommands.INSTALL.id
                 };
         }

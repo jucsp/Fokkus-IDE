@@ -3,7 +3,7 @@
   "name": "theia-ide-electron-app",
   "description": "Fokkus IDE product",
   "productName": "Fokkus IDE",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "main": "scripts/theia-electron-main.js",
   "license": "MIT",
   "author": "Eclipse Theia <theia-dev@eclipse.org>",

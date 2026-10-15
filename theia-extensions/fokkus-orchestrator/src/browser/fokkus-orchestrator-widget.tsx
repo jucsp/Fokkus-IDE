@@ -22,7 +22,7 @@ import { ConfirmDialog } from '@theia/core/lib/browser';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { FokkusSwarmEvents } from './fokkus-swarm-events';
-import { JarvisCompanionInfo, JarvisCompanionServer } from '../common/jarvis-companion-protocol';
+import { JARVIS_COMPANION_RELEASES_URL, JarvisCompanionInfo, JarvisCompanionServer } from '../common/jarvis-companion-protocol';
 
 import {
     APPROVAL_REQUEST_FENCE,
@@ -1005,9 +1005,6 @@ function WorkspacePanel({ preferenceService }: WorkspacePanelProps): React.React
 /* Jarvis panel — acceso directo al asistente nativo externo                */
 /* ------------------------------------------------------------------------ */
 
-/** Página de descargas del compañero Jarvis, desarrollado en un repositorio aparte. */
-const JARVIS_COMPANION_RELEASES_URL = 'https://github.com/jucsp/Fokkus-Jarvis/releases';
-
 interface JarvisPanelProps {
     companionServer: JarvisCompanionServer | undefined;
     windowService: WindowService;
@@ -1017,7 +1014,15 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
     const [info, setInfo] = React.useState<JarvisCompanionInfo | undefined>(undefined);
     const [loading, setLoading] = React.useState(false);
     const [starting, setStarting] = React.useState(false);
+    const [savingPath, setSavingPath] = React.useState(false);
+    const [binaryPathDraft, setBinaryPathDraft] = React.useState('');
+    const [notice, setNotice] = React.useState<string | undefined>(undefined);
     const [error, setError] = React.useState<string | undefined>(undefined);
+
+    const applyInfo = React.useCallback((next: JarvisCompanionInfo) => {
+        setInfo(next);
+        setBinaryPathDraft(next.configuredBinaryPath ?? '');
+    }, []);
 
     const refresh = React.useCallback(async () => {
         if (!companionServer) {
@@ -1026,15 +1031,14 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
         }
         setLoading(true);
         try {
-            const next = await companionServer.getCompanionInfo();
-            setInfo(next);
+            applyInfo(await companionServer.getCompanionInfo());
             setError(undefined);
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'No se pudo consultar el estado de Fokkus-Jarvis.');
         } finally {
             setLoading(false);
         }
-    }, [companionServer]);
+    }, [companionServer, applyInfo]);
 
     React.useEffect(() => {
         refresh().catch(() => undefined);
@@ -1049,9 +1053,13 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
             return;
         }
         setStarting(true);
+        setNotice(undefined);
         try {
             const result = await companionServer.startJarvis();
-            if (!result.success) {
+            if (result.success) {
+                setError(undefined);
+                setNotice('Fokkus-Jarvis se está iniciando en su propia ventana.');
+            } else {
                 setError(result.error ?? 'No se pudo iniciar Fokkus-Jarvis.');
             }
         } catch (cause) {
@@ -1062,15 +1070,39 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
         }
     }, [companionServer, refresh]);
 
+    const saveBinaryPath = React.useCallback(async (value: string) => {
+        if (!companionServer) {
+            return;
+        }
+        setSavingPath(true);
+        setNotice(undefined);
+        try {
+            const result = await companionServer.setBinaryPath(value);
+            setInfo(result.info);
+            if (result.success) {
+                setBinaryPathDraft(result.info.configuredBinaryPath ?? '');
+                setError(undefined);
+                setNotice(value.trim() ? 'Ruta del ejecutable guardada.' : 'Se usará la búsqueda automática (PATH).');
+            } else {
+                setError(result.error ?? 'No se pudo guardar la ruta del ejecutable.');
+            }
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'No se pudo guardar la ruta del ejecutable.');
+        } finally {
+            setSavingPath(false);
+        }
+    }, [companionServer]);
+
     const status = info?.status;
+    const pathDirty = binaryPathDraft.trim() !== (info?.configuredBinaryPath ?? '');
 
     return (
         <>
             <header className='fokkus-orchestrator-header'>
                 <h2 className='fokkus-orchestrator-title'>Jarvis — Asistente de Voz Externo</h2>
                 <p className='fokkus-orchestrator-subtitle'>
-                    Jarvis es una aplicación nativa e independiente desarrollada en Rust. Ya no forma parte de Fokkus IDE
-                    para mantener el editor ultraligero y compatible.
+                    Jarvis es una aplicación nativa e independiente (Fokkus-Jarvis, en Rust) que se instala aparte.
+                    Fokkus IDE no incluye ningún motor de voz: desde aquí solo se lanza o se descarga.
                 </p>
             </header>
 
@@ -1080,16 +1112,16 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
                         <i className='fa fa-exclamation-triangle' /> {error}
                     </p>
                 )}
+                {notice && !error && <p className='fokkus-jarvis-message'><i className='fa fa-info-circle' /> {notice}</p>}
+
+                {status === undefined && !error && <p className='fokkus-jarvis-message'>Buscando Fokkus-Jarvis…</p>}
 
                 {status === 'connected' && (
                     <>
                         <div className='fokkus-jarvis-badge fokkus-jarvis-badge--connected'>
                             <i className='fa fa-check-circle' />
-                            <span>Conectado y sincronizado</span>
+                            <span>Jarvis está en ejecución</span>
                         </div>
-                        <p className='fokkus-jarvis-socket'>
-                            Socket: <code>{info?.socketPath}</code>
-                        </p>
                         <button
                             type='button'
                             className='fokkus-help-use-btn'
@@ -1104,9 +1136,7 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
 
                 {status === 'installed-stopped' && (
                     <>
-                        <p className='fokkus-jarvis-message'>
-                            Fokkus-Jarvis está instalado pero no se está ejecutando. Inícialo para que supervise el equipo.
-                        </p>
+                        <p className='fokkus-jarvis-message'>Fokkus-Jarvis está instalado.</p>
                         <button
                             type='button'
                             className='fokkus-help-use-btn'
@@ -1114,23 +1144,72 @@ function JarvisPanel({ companionServer, windowService }: JarvisPanelProps): Reac
                             disabled={starting}
                         >
                             <i className='fa fa-play' />
-                            <span>{starting ? 'Iniciando…' : 'Iniciar Jarvis'}</span>
+                            <span>{starting ? 'Lanzando…' : 'Lanzar Jarvis'}</span>
                         </button>
                     </>
                 )}
 
-                {(status === 'not-installed' || (status === undefined && !error)) && (
+                {status === 'not-installed' && (
                     <>
                         <p className='fokkus-jarvis-message'>
-                            Jarvis no está instalado. Descarga la última versión desde GitHub Releases para habilitar el
-                            asistente de voz nativo.
+                            Fokkus-Jarvis no está instalado. Descarga la última versión desde GitHub Releases.
                         </p>
                         <button type='button' className='fokkus-help-use-btn' onClick={openReleases}>
                             <i className='fa fa-cloud-download' />
-                            <span>Descargar e Instalar Fokkus-Jarvis</span>
+                            <span>Descargar e Instalar</span>
                         </button>
                     </>
                 )}
+
+                {info?.binaryPath && (
+                    <p className='fokkus-jarvis-socket'>
+                        Ejecutable: <code>{info.binaryPath}</code>
+                    </p>
+                )}
+
+                <div className='fokkus-jarvis-path'>
+                    <label className='fokkus-field-label' htmlFor='fokkus-jarvis-binary-path'>
+                        Ruta del ejecutable (opcional, si no está en el PATH)
+                    </label>
+                    <div className='fokkus-jarvis-path-row'>
+                        <input
+                            id='fokkus-jarvis-binary-path'
+                            type='text'
+                            className='fokkus-field-input'
+                            placeholder='/ruta/a/fokkus-jarvis'
+                            spellCheck={false}
+                            value={binaryPathDraft}
+                            onChange={event => setBinaryPathDraft(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter' && pathDirty && !savingPath) {
+                                    saveBinaryPath(binaryPathDraft).catch(() => undefined);
+                                }
+                            }}
+                            disabled={!companionServer || savingPath}
+                        />
+                        <button
+                            type='button'
+                            className='fokkus-help-use-btn'
+                            onClick={() => { saveBinaryPath(binaryPathDraft).catch(() => undefined); }}
+                            disabled={!companionServer || savingPath || !pathDirty}
+                        >
+                            <i className='fa fa-save' />
+                            <span>{savingPath ? 'Guardando…' : 'Guardar'}</span>
+                        </button>
+                        {info?.configuredBinaryPath && (
+                            <button
+                                type='button'
+                                className='fokkus-help-use-btn'
+                                onClick={() => { saveBinaryPath('').catch(() => undefined); }}
+                                disabled={savingPath}
+                                title='Volver a buscar fokkus-jarvis en el PATH'
+                            >
+                                <i className='fa fa-undo' />
+                                <span>Restablecer</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
             </div>
         </>
     );

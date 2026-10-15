@@ -31,7 +31,6 @@ import {
     SwarmAgentResult,
     SwarmDispatchResult,
     SwarmEdge,
-    SynthesizedAudio,
     TeamAssignments,
     TeamConfiguration,
     isExecutionMode
@@ -40,7 +39,6 @@ import { resolveApprovalState as computeApprovalState, ResolvedApprovalState } f
 import { readBitbucketCredentials } from './bitbucket-credentials';
 import { filterActiveBacklog, formatRecentChatHistory, isConversationalOrSimplePrompt } from './orchestrator-prompt-logic';
 import { GitCredentialsStore } from './git-credentials-store';
-import { inferAudioExtension, JARVIS_STT_SCRIPT, JARVIS_STT_TIMEOUT_MS, normalizeSttLanguage, parseJarvisSttOutput } from './jarvis-stt-script';
 
 const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm)
 
@@ -76,11 +74,6 @@ const TECHNICAL_MEMORY_TEMPLATE = `# Memoria Técnica del Proyecto (Fokkus Swarm
 
 -->
 `;
-
-/** Tope para edge-tts: si no responde a tiempo (p. ej. sin red), se hace fallback a espeak-ng. */
-const JARVIS_TTS_EDGE_TIMEOUT_MS = 8000;
-/** Tope para espeak-ng (offline y casi instantáneo; margen para textos largos). */
-const JARVIS_TTS_ESPEAK_TIMEOUT_MS = 15000;
 
 class AgentCancelledError extends Error {
     constructor() {
@@ -955,234 +948,6 @@ export class FokkusOrchestratorServerImpl implements FokkusOrchestratorServer {
             platform: process.platform,
             desktop: process.env.XDG_CURRENT_DESKTOP || ''
         };
-    }
-
-    /**
-     * Transcribe un audio (base64) con faster-whisper, de forma 100 % local: no
-     * depende de los servidores de Google que `webkitSpeechRecognition` necesita
-     * (y que Electron rechaza con 403 → error 'network').
-     */
-    async transcribeAudio(base64Audio: string, mimeType: string, lang?: string): Promise<string> {
-        if (typeof base64Audio !== 'string' || base64Audio.length === 0) {
-            return '';
-        }
-        const tempDir = await fs.mkdtemp(join(os.tmpdir(), 'fokkus-stt-'));
-        const audioFile = join(tempDir, `audio${inferAudioExtension(mimeType)}`);
-        try {
-            await fs.writeFile(audioFile, Buffer.from(base64Audio, 'base64'));
-            const output = await this.transcribeAudioViaBackend(audioFile, normalizeSttLanguage(lang));
-            const parsed = parseJarvisSttOutput(output);
-            if (!parsed) {
-                throw new Error(`Salida inesperada del STT local: ${output.slice(0, 200)}`);
-            }
-            if (parsed.error) {
-                throw new Error(parsed.error);
-            }
-            return (parsed.text ?? '').trim();
-        } finally {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-        }
-    }
-
-    /**
-     * Ejecuta el script de transcripción (embebido, por stdin). Prefiere `uv run --with faster-whisper`
-     * (entorno efímero que ya trae las dependencias) y, si `uv` no existe, cae a `python3`.
-     */
-    private async transcribeAudioViaBackend(audioFile: string, language: string): Promise<string> {
-        try {
-            return await this.runSttCommand('uv', ['run', '--with', 'faster-whisper', 'python3', '-', audioFile, language]);
-        } catch (error) {
-            if (!this.isEnoent(error)) {
-                throw error;
-            }
-            try {
-                return await this.runSttCommand('python3', ['-', audioFile, language]);
-            } catch (pythonError) {
-                if (this.isEnoent(pythonError)) {
-                    throw new Error('No se encontró `uv` ni `python3` para la transcripción local de Jarvis.');
-                }
-                throw pythonError;
-            }
-        }
-    }
-
-    /**
-     * Ejecuta el proceso STT capturando stdout/stderr sin ensuciar el log del agente. Si el script
-     * falla, su `{"error": …}` se devuelve tal cual para que `transcribeAudio` lo convierta en un
-     * mensaje legible; un proceso colgado (p. ej. descargando el modelo sin red) se mata al tope.
-     */
-    private runSttCommand(file: string, args: string[]): Promise<string> {
-        return new Promise<string>((resolve, reject) => {
-            const child = spawn(file, args, { windowsHide: true });
-            let stdout = '';
-            let stderr = '';
-            let settled = false;
-            const finish = (action: () => void): void => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timer);
-                    action();
-                }
-            };
-            const timer = setTimeout(() => {
-                child.kill('SIGKILL');
-                finish(() => reject(new Error(`La transcripción local superó ${JARVIS_STT_TIMEOUT_MS / 1000} s`)));
-            }, JARVIS_STT_TIMEOUT_MS);
-            child.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
-            child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
-            child.stdin.on('error', () => undefined);
-            child.on('error', error => finish(() => reject(error)));
-            child.on('close', (code: number | null) => finish(() => {
-                if (code !== 0 && !parseJarvisSttOutput(stdout)?.error) {
-                    const detail = stderr.trim() || stdout.trim();
-                    reject(new Error(detail.slice(-500) || `El proceso STT terminó con código ${code ?? 'desconocido'}`));
-                    return;
-                }
-                resolve(stdout.trim());
-            }));
-            child.stdin.end(JARVIS_STT_SCRIPT);
-        });
-    }
-
-    private isEnoent(error: unknown): boolean {
-        return !!error && typeof error === 'object' && (error as NodeJS.ErrnoException).code === 'ENOENT';
-    }
-
-    /**
-     * Sintetiza `text` a voz con un pipeline dual: primero edge-tts (voz neuronal de alta calidad),
-     * probando el binario en el PATH y en `~/.local/bin` (nunca `uvx`/pip: descargarían de PyPI, que
-     * está vetado); si todo falla o tarda demasiado, espeak-ng (100 % offline). El texto va en un archivo
-     * (`--file` / `-f`): así un texto que empiece por `-` no se toma como opción. Devuelve el audio en
-     * base64 para reproducirlo en el frontend con HTML5 `Audio`, evitando `window.speechSynthesis`
-     * (que en Electron/Linux suele devolver cero voces y no emite sonido).
-     */
-    async synthesizeSpeech(text: string, lang?: string): Promise<SynthesizedAudio> {
-        const cleanText = text.replace(/\s+/g, ' ').trim();
-        if (cleanText.length === 0) {
-            throw new Error('No hay texto que sintetizar.');
-        }
-        const voice = this.resolveTtsVoice(lang);
-        const tempDir = await fs.mkdtemp(join(os.tmpdir(), 'fokkus-tts-'));
-        try {
-            const textFile = join(tempDir, 'speech.txt');
-            await fs.writeFile(textFile, cleanText, 'utf8');
-            const mp3File = join(tempDir, 'speech.mp3');
-            try {
-                await this.runEdgeTts(voice, textFile, mp3File);
-                const mp3 = await fs.readFile(mp3File);
-                return { base64Audio: mp3.toString('base64'), mimeType: 'audio/mpeg' };
-            } catch (error) {
-                console.warn('[fokkus-jarvis] edge-tts no disponible; se usa espeak-ng como respaldo.', error instanceof Error ? error.message : String(error));
-            }
-            const wavFile = join(tempDir, 'speech.wav');
-            const espeakLang = this.resolveEspeakLanguage(lang);
-            await this.runTtsCommand('espeak-ng', ['-v', espeakLang, '-w', wavFile, '-f', textFile], JARVIS_TTS_ESPEAK_TIMEOUT_MS);
-            const wav = await fs.readFile(wavFile);
-            return { base64Audio: wav.toString('base64'), mimeType: 'audio/wav' };
-        } finally {
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-        }
-    }
-
-    /**
-     * Intenta sintetizar con un edge-tts YA instalado probando, en orden: el binario en el PATH y en
-     * `~/.local/bin` (el PATH del backend lanzado desde el escritorio no suele incluirlo). No se usa
-     * `uvx edge-tts`: descarga el paquete de PyPI en cada máquina. Lanza el último error si ninguna
-     * variante generó el MP3, para que `synthesizeSpeech` caiga a espeak-ng.
-     */
-    private async runEdgeTts(voice: string, textFile: string, mp3File: string): Promise<void> {
-        const edgeArgs = ['--voice', voice, '--file', textFile, '--write-media', mp3File];
-        const binaries = ['edge-tts', join(os.homedir(), '.local', 'bin', 'edge-tts')];
-        let lastError: unknown;
-        for (const binary of binaries) {
-            try {
-                await this.runTtsCommand(binary, edgeArgs, JARVIS_TTS_EDGE_TIMEOUT_MS);
-                return;
-            } catch (error) {
-                lastError = error;
-                // Solo se prueba la ruta siguiente si este binario no existe: si existe y falla (sin
-                // red, timeout) otra copia fallaría igual y sumaría otro timeout antes de espeak-ng.
-                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    break;
-                }
-            }
-        }
-        throw lastError;
-    }
-
-    /**
-     * Voz neuronal de edge-tts según el idioma de la configuración de Jarvis. Si el parámetro ya es
-     * un id de voz (contiene 'Neural'), se devuelve tal cual: así la vista previa puede elegir la voz
-     * exacta. Si no, se resuelve por código de idioma, con Latinoamérica (es-CL) como valor por defecto.
-     */
-    private resolveTtsVoice(langOrVoice?: string): string {
-        const raw = (langOrVoice || 'es').trim();
-        if (raw.toLowerCase().includes('neural')) {
-            return raw;
-        }
-        const code = raw.toLowerCase();
-        if (code.startsWith('es-es')) {
-            return 'es-ES-AlvaroNeural';
-        }
-        if (code.startsWith('es-mx')) {
-            return 'es-MX-JorgeNeural';
-        }
-        if (code.startsWith('es-ar')) {
-            return 'es-AR-TomasNeural';
-        }
-        if (code.startsWith('es-co')) {
-            return 'es-CO-GonzaloNeural';
-        }
-        if (code.startsWith('es-pe')) {
-            return 'es-PE-AlexNeural';
-        }
-        if (code.startsWith('en')) {
-            return 'en-US-ChristopherNeural';
-        }
-        // es-cl, es-419, es-la, es genérico y cualquier otro código → voz latina por defecto.
-        return 'es-CL-LorenzoNeural';
-    }
-
-    /** Código ISO 639-1 que entiende espeak-ng. */
-    private resolveEspeakLanguage(lang?: string): string {
-        const code = (lang || 'es').trim().toLowerCase();
-        if (code.startsWith('es')) {
-            return 'es';
-        }
-        if (code.startsWith('en')) {
-            return 'en';
-        }
-        return 'es';
-    }
-
-    /** Ejecuta un proceso TTS sin ensuciar el log del agente y con tope de tiempo. */
-    private runTtsCommand(file: string, args: string[], timeoutMs: number): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
-            const child = spawn(file, args, { windowsHide: true });
-            let stderr = '';
-            let settled = false;
-            const finish = (action: () => void): void => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timer);
-                    action();
-                }
-            };
-            const timer = setTimeout(() => {
-                child.kill('SIGKILL');
-                finish(() => reject(new Error(`El proceso TTS superó ${timeoutMs / 1000} s`)));
-            }, timeoutMs);
-            child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
-            child.on('error', error => finish(() => reject(error)));
-            child.on('close', (code: number | null) => finish(() => {
-                if (code !== 0) {
-                    const detail = stderr.trim();
-                    reject(new Error(detail.slice(-500) || `El proceso TTS terminó con código ${code ?? 'desconocido'}`));
-                    return;
-                }
-                resolve();
-            }));
-        });
     }
 
     private async resolveWorkspaceRoot(): Promise<string> {

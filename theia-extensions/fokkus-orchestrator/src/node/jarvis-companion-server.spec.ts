@@ -8,7 +8,7 @@
  ********************************************************************************/
 
 import { expect } from 'chai';
-import { mkdtempSync, rmSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -18,6 +18,7 @@ import {
     JARVIS_METHOD_SWARM_COMPLETED,
     JARVIS_METHOD_SWARM_TASK,
     JARVIS_METHOD_TRIAGE_ALERT,
+    JARVIS_CONFIG_FILENAME,
     JARVIS_PING_METHOD,
     JARVIS_SOCKET_FILENAME,
     JarvisCompanionServerImpl,
@@ -90,6 +91,53 @@ describe('jarvis-companion-server', () => {
             expect(info.running).to.equal(false);
             expect(info.binaryPath).to.equal(undefined);
             expect(info.socketPath).to.equal(join(home, '.fokkus', JARVIS_SOCKET_FILENAME));
+        });
+
+        it("guarda una ruta de ejecutable configurada y pasa a 'installed-stopped'", async () => {
+            const binary = join(home, 'apps', 'fokkus-jarvis');
+            mkdirSync(join(home, 'apps'));
+            writeFileSync(binary, '#!/bin/sh\n');
+            chmodSync(binary, 0o755);
+
+            const server = new JarvisCompanionServerImpl();
+            const result = await server.setBinaryPath(`  ${binary}  `);
+            expect(result.success).to.equal(true);
+            expect(result.info.status).to.equal('installed-stopped');
+            expect(result.info.binaryPath).to.equal(binary);
+            expect(result.info.configuredBinaryPath).to.equal(binary);
+
+            // Persiste entre instancias (~/.fokkus/jarvis.json).
+            const reloaded = await new JarvisCompanionServerImpl().getCompanionInfo();
+            expect(reloaded.configuredBinaryPath).to.equal(binary);
+
+            const reset = await server.setBinaryPath('');
+            expect(reset.success).to.equal(true);
+            expect(reset.info.status).to.equal('not-installed');
+            expect(reset.info.configuredBinaryPath).to.equal(undefined);
+            expect(existsSync(join(home, '.fokkus', JARVIS_CONFIG_FILENAME))).to.equal(false);
+        });
+
+        it('rechaza rutas relativas, directorios y archivos sin permiso de ejecución', async () => {
+            const server = new JarvisCompanionServerImpl();
+            const plain = join(home, 'no-ejecutable');
+            writeFileSync(plain, 'x');
+            chmodSync(plain, 0o644);
+
+            for (const candidate of ['bin/fokkus-jarvis', home, plain, join(home, 'no-existe')]) {
+                const result = await server.setBinaryPath(candidate);
+                expect(result.success, candidate).to.equal(false);
+                expect(result.error, candidate).to.be.a('string');
+                expect(result.info.configuredBinaryPath, candidate).to.equal(undefined);
+            }
+            expect(existsSync(join(home, '.fokkus', JARVIS_CONFIG_FILENAME))).to.equal(false);
+        });
+
+        it('ignora un jarvis.json corrupto', async () => {
+            mkdirSync(join(home, '.fokkus'));
+            writeFileSync(join(home, '.fokkus', JARVIS_CONFIG_FILENAME), '{ no es json');
+            const info = await new JarvisCompanionServerImpl().getCompanionInfo();
+            expect(info.status).to.equal('not-installed');
+            expect(info.configuredBinaryPath).to.equal(undefined);
         });
     });
 

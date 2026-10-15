@@ -11,7 +11,7 @@ import { promises as fs, constants } from 'fs';
 import { spawn } from 'child_process';
 import * as net from 'net';
 import { homedir } from 'os';
-import { delimiter, join } from 'path';
+import { delimiter, dirname, isAbsolute, join } from 'path';
 import { injectable } from '@theia/core/shared/inversify';
 import {
     JarvisCompanionInfo,
@@ -23,6 +23,8 @@ import {
 export const JARVIS_BINARY_NAME = 'fokkus-jarvis';
 /** Nombre del archivo del socket dentro de ~/.fokkus. */
 export const JARVIS_SOCKET_FILENAME = 'jarvis.sock';
+/** Archivo (dentro de ~/.fokkus) con la ruta del ejecutable configurada en Ajustes › Jarvis. */
+export const JARVIS_CONFIG_FILENAME = 'jarvis.json';
 /** Método JSON-RPC que usa el ping de comprobación. */
 export const JARVIS_PING_METHOD = 'jarvis.ping';
 /** Métodos JSON-RPC de notificación hacia el compañero. */
@@ -72,12 +74,19 @@ export function resolveJarvisSocketPath(env: NodeJS.ProcessEnv, homeDir: string)
     return jarvisSocketCandidates(env, homeDir)[0];
 }
 
-/** Rutas candidatas del binario `fokkus-jarvis`, en orden de prioridad. */
-export function jarvisBinaryCandidates(env: NodeJS.ProcessEnv, homeDir: string): string[] {
+/**
+ * Rutas candidatas del binario `fokkus-jarvis`, en orden de prioridad: variable de entorno,
+ * ruta configurada en Ajustes, PATH, `~/.cargo/bin` y `~/.local/bin`.
+ */
+export function jarvisBinaryCandidates(env: NodeJS.ProcessEnv, homeDir: string, configuredPath?: string): string[] {
     const candidates: string[] = [];
     const override = (env.FOKKUS_JARVIS_BINARY ?? '').trim();
     if (override) {
         candidates.push(override);
+    }
+    const configured = (configuredPath ?? '').trim();
+    if (configured) {
+        candidates.push(configured);
     }
     const pathDirs = (env.PATH ?? '').split(delimiter).filter(dir => !!dir);
     for (const dir of pathDirs) {
@@ -136,18 +145,41 @@ export class JarvisCompanionServerImpl implements JarvisCompanionServer {
 
     async getCompanionInfo(): Promise<JarvisCompanionInfo> {
         const homeDir = resolveHomeDir(process.env);
-        const binaryPath = await this.findBinaryPath();
+        const configuredBinaryPath = await this.readConfiguredBinaryPath();
+        const binaryPath = await this.findBinaryPath(configuredBinaryPath);
         const candidates = jarvisSocketCandidates(process.env, homeDir);
         const socketPath = await this.pickSocketPath(candidates);
         const ping = await this.pingCompanion(socketPath);
         const installed = !!binaryPath;
         const running = ping.connected;
         const status: JarvisCompanionStatus = running ? 'connected' : installed ? 'installed-stopped' : 'not-installed';
-        return { status, installed, running, version: ping.version, socketPath, binaryPath, state: ping.state };
+        return { status, installed, running, version: ping.version, socketPath, binaryPath, configuredBinaryPath, state: ping.state };
+    }
+
+    async setBinaryPath(binaryPath: string): Promise<{ success: boolean; error?: string; info: JarvisCompanionInfo }> {
+        const value = typeof binaryPath === 'string' ? binaryPath.trim() : '';
+        if (value && !isAbsolute(value)) {
+            return { success: false, error: 'La ruta del ejecutable debe ser absoluta.', info: await this.getCompanionInfo() };
+        }
+        if (value && !(await this.isExecutable(value))) {
+            return { success: false, error: `No hay un ejecutable en ${value}.`, info: await this.getCompanionInfo() };
+        }
+        const configFile = this.configFilePath();
+        try {
+            if (value) {
+                await fs.mkdir(dirname(configFile), { recursive: true });
+                await fs.writeFile(configFile, `${JSON.stringify({ binaryPath: value }, undefined, 2)}\n`, 'utf8');
+            } else {
+                await fs.rm(configFile, { force: true });
+            }
+        } catch (err) {
+            return { success: false, error: err instanceof Error ? err.message : String(err), info: await this.getCompanionInfo() };
+        }
+        return { success: true, info: await this.getCompanionInfo() };
     }
 
     async startJarvis(): Promise<{ success: boolean; error?: string }> {
-        const binaryPath = await this.findBinaryPath();
+        const binaryPath = await this.findBinaryPath(await this.readConfiguredBinaryPath());
         if (!binaryPath) {
             return { success: false, error: 'Fokkus-Jarvis no está instalado. Descárgalo desde GitHub Releases.' };
         }
@@ -197,10 +229,25 @@ export class JarvisCompanionServerImpl implements JarvisCompanionServer {
         }
     }
 
+    protected configFilePath(): string {
+        return join(resolveHomeDir(process.env), '.fokkus', JARVIS_CONFIG_FILENAME);
+    }
+
+    /** Ruta configurada en Ajustes › Jarvis; un archivo ausente o corrupto equivale a «sin configurar». */
+    protected async readConfiguredBinaryPath(): Promise<string | undefined> {
+        try {
+            const parsed: unknown = JSON.parse(await fs.readFile(this.configFilePath(), 'utf8'));
+            const value = parsed && typeof parsed === 'object' ? (parsed as { binaryPath?: unknown }).binaryPath : undefined;
+            return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     /** Primer binario accesible de entre las rutas candidatas. */
-    protected async findBinaryPath(): Promise<string | undefined> {
+    protected async findBinaryPath(configuredPath?: string): Promise<string | undefined> {
         const homeDir = resolveHomeDir(process.env);
-        for (const candidate of jarvisBinaryCandidates(process.env, homeDir)) {
+        for (const candidate of jarvisBinaryCandidates(process.env, homeDir, configuredPath)) {
             if (await this.isExecutable(candidate)) {
                 return candidate;
             }
@@ -208,10 +255,11 @@ export class JarvisCompanionServerImpl implements JarvisCompanionServer {
         return undefined;
     }
 
+    /** Archivo regular con permiso de ejecución (un directorio también pasa `X_OK`). */
     protected async isExecutable(path: string): Promise<boolean> {
         try {
             await fs.access(path, constants.X_OK);
-            return true;
+            return (await fs.stat(path)).isFile();
         } catch {
             return false;
         }

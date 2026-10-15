@@ -1745,3 +1745,22 @@
 .fokkus-jarvis-message--error {
     color: #fca5a5;
 }
+
+.fokkus-jarvis-path {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fokkus-jarvis-path-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fokkus-jarvis-path-row .fokkus-field-input {
+    flex: 1;
+    min-width: 0;
+}

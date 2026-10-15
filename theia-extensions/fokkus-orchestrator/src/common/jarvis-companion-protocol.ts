@@ -19,6 +19,9 @@
 export const JarvisCompanionServerPath = '/services/jarvis-companion';
 export const JarvisCompanionServer = Symbol('JarvisCompanionServer');
 
+/** Última versión publicada del compañero (repositorio independiente `Fokkus-Jarvis`). */
+export const JARVIS_COMPANION_RELEASES_URL = 'https://github.com/jucsp/Fokkus-Jarvis/releases/latest';
+
 /** Estado de enlace con el compañero `fokkus-jarvis`. */
 export type JarvisCompanionStatus = 'connected' | 'installed-stopped' | 'not-installed';
 
@@ -35,6 +38,8 @@ export interface JarvisCompanionInfo {
     socketPath: string;
     /** Ruta absoluta del binario detectado, si se encontró. */
     binaryPath?: string;
+    /** Ruta del ejecutable configurada a mano en Ajustes › Jarvis (vacía = búsqueda automática). */
+    configuredBinaryPath?: string;
     /** Estado interno que reporta el compañero (p. ej. 'supervisando'), si lo informa. */
     state?: string;
 }
@@ -66,6 +71,11 @@ export interface JarvisCompanionServer {
     getCompanionInfo(): Promise<JarvisCompanionInfo>;
     /** Lanza `fokkus-jarvis` desacoplado del IDE. Falla si el binario no está instalado. */
     startJarvis(): Promise<{ success: boolean; error?: string }>;
+    /**
+     * Guarda la ruta del ejecutable para cuando no está en el PATH (`''` vuelve a la búsqueda
+     * automática). Rechaza rutas relativas o que no sean un archivo ejecutable.
+     */
+    setBinaryPath(binaryPath: string): Promise<{ success: boolean; error?: string; info: JarvisCompanionInfo }>;
     /** Notifica a Jarvis el inicio de una tarea del Swarm de desarrollo. */
     notifySwarmTask(task: { taskId: string; agent: string; goal: string }): Promise<void>;
     /** Notifica a Jarvis que una tarea del Swarm terminó con su resumen. */

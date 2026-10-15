@@ -14,6 +14,7 @@ import { Command, CommandContribution, CommandRegistry } from '@theia/core/lib/c
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import {
+    JARVIS_COMPANION_RELEASES_URL,
     JarvisCompanionInfo,
     JarvisCompanionServer
 } from '../common/jarvis-companion-protocol';
@@ -29,10 +30,10 @@ export namespace JarvisCompanionCommands {
     export const INSTALL: Command = { id: 'fokkus:jarvis-install', category: CATEGORY, label: 'Descargar e instalar Fokkus-Jarvis' };
 }
 
-/** Elemento de la barra de estado que muestra el enlace con el compañero. */
+/** Único elemento de la barra de estado de Jarvis (acceso directo al compañero externo). */
 export const JARVIS_COMPANION_STATUS_BAR_ID = 'fokkus-jarvis-companion-status';
-/** Página de descargas del compañero independiente. */
-export const JARVIS_COMPANION_RELEASES_URL = 'https://github.com/jucsp/Fokkus-Jarvis/releases';
+/** Texto fijo del acceso directo: el estado va solo en el tooltip, nunca en el texto. */
+export const JARVIS_COMPANION_STATUS_TEXT = '$(fa-microphone) Jarvis';
 /** Periodicidad del sondeo del estado del compañero. */
 export const JARVIS_COMPANION_POLL_INTERVAL_MS = 15000;
 /** Si el backend no está desplegado, el proxy RPC nunca responde: se corta con un timeout. */
@@ -65,11 +66,9 @@ function withCompanionTimeout<T>(promise: Promise<T>, timeoutMs: number = RPC_TI
 }
 
 /**
- * Conector del compañero Jarvis (sustituye a la ventana overlay de Electron).
- *
- * Muestra el estado en la barra de estado (Conectado / Detenido / No instalado), permite
- * iniciar o descargar `fokkus-jarvis` y reenvía al compañero los eventos del Swarm de
- * desarrollo y las alertas de la Bandeja.
+ * Acceso directo al compañero externo `fokkus-jarvis` (app Rust independiente; el IDE no
+ * tiene motor de voz). Muestra un único botón «Jarvis» en la barra de estado que lo inicia o
+ * abre su descarga, y reenvía al compañero los eventos del Swarm y las alertas de la Bandeja.
  */
 @injectable()
 export class JarvisCompanionContribution implements CommandContribution, FrontendApplicationContribution {
@@ -151,27 +150,15 @@ export class JarvisCompanionContribution implements CommandContribution, Fronten
         }).catch(error => console.warn('[fokkus-jarvis-companion] No se pudo actualizar la barra de estado', error));
     }
 
-    /** Texto, tooltip y comando de clic según el estado del compañero. */
+    /** Tooltip y comando de clic según el estado del compañero; el texto es siempre el mismo. */
     protected statusView(info: JarvisCompanionInfo): JarvisCompanionStatusView {
         switch (info.status) {
             case 'connected':
-                return {
-                    text: '$(radio-tower) Jarvis: Conectado',
-                    tooltip: 'Jarvis conectado y supervisando el Swarm',
-                    command: JarvisCompanionCommands.CHECK.id
-                };
+                return { text: JARVIS_COMPANION_STATUS_TEXT, tooltip: 'Fokkus-Jarvis: Conectado', command: JarvisCompanionCommands.CHECK.id };
             case 'installed-stopped':
-                return {
-                    text: '$(play) Iniciar Jarvis',
-                    tooltip: 'Fokkus-Jarvis está instalado. Clic para ejecutar el asistente nativo',
-                    command: JarvisCompanionCommands.START.id
-                };
+                return { text: JARVIS_COMPANION_STATUS_TEXT, tooltip: 'Fokkus-Jarvis: Iniciar asistente', command: JarvisCompanionCommands.START.id };
             default:
-                return {
-                    text: '$(cloud-download) Descargar Jarvis',
-                    tooltip: 'Fokkus-Jarvis no está instalado. Clic para descargar desde GitHub',
-                    command: JarvisCompanionCommands.INSTALL.id
-                };
+                return { text: JARVIS_COMPANION_STATUS_TEXT, tooltip: 'Fokkus-Jarvis: Descargar desde GitHub', command: JarvisCompanionCommands.INSTALL.id };
         }
     }
 
